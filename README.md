@@ -1,16 +1,15 @@
-## Hi there 👋
+# OnceEgg
 
-<!--
-**onceegg/onceegg** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+Building things worth keeping.
 
-Here are some ideas to get you started:
+---
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+Started on July 23, 2026.
+
+OnceEgg is a place for ideas, products, experiments and artworks.
+
+Some will become real.
+
+Some will remain sketches.
+
+Both matter.
