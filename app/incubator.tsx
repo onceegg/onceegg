@@ -1,0 +1,347 @@
+"use client";
+
+import {
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
+
+type WordId = "ideas" | "products" | "experiments" | "artworks";
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+type Positions = Record<WordId, Point>;
+
+type HorizontalLimits = {
+  minimum: number;
+  maximum: number;
+};
+
+type DragState = {
+  id: WordId;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  fieldWidth: number;
+  fieldHeight: number;
+  origin: Point;
+  moved: boolean;
+};
+
+const WORDS: Array<{ id: WordId; label: string }> = [
+  { id: "ideas", label: "Ideas," },
+  { id: "products", label: "products," },
+  { id: "experiments", label: "experiments," },
+  { id: "artworks", label: "and artworks" },
+];
+
+const LAYOUTS: Positions[] = [
+  {
+    ideas: { x: 0.14, y: 0.2 },
+    products: { x: 0.67, y: 0.28 },
+    experiments: { x: 0.3, y: 0.67 },
+    artworks: { x: 0.72, y: 0.78 },
+  },
+  {
+    ideas: { x: 0.64, y: 0.16 },
+    products: { x: 0.2, y: 0.38 },
+    experiments: { x: 0.68, y: 0.6 },
+    artworks: { x: 0.34, y: 0.82 },
+  },
+  {
+    ideas: { x: 0.2, y: 0.76 },
+    products: { x: 0.7, y: 0.74 },
+    experiments: { x: 0.52, y: 0.22 },
+    artworks: { x: 0.34, y: 0.48 },
+  },
+];
+
+const IDEA_NUDGES: Point[] = [
+  { x: 0.045, y: -0.035 },
+  { x: -0.035, y: 0.045 },
+  { x: 0.055, y: 0.025 },
+  { x: -0.04, y: -0.03 },
+];
+
+const HORIZONTAL_LIMITS: Record<WordId, HorizontalLimits> = {
+  ideas: { minimum: 0.07, maximum: 0.9 },
+  products: { minimum: 0.08, maximum: 0.86 },
+  experiments: { minimum: 0.1, maximum: 0.8 },
+  artworks: { minimum: 0.12, maximum: 0.78 },
+};
+
+function copyLayout(layout: Positions): Positions {
+  return {
+    ideas: { ...layout.ideas },
+    products: { ...layout.products },
+    experiments: { ...layout.experiments },
+    artworks: { ...layout.artworks },
+  };
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function constrainPoint(id: WordId, point: Point): Point {
+  const limits = HORIZONTAL_LIMITS[id];
+
+  return {
+    x: clamp(point.x, limits.minimum, limits.maximum),
+    y: clamp(point.y, 0.1, 0.88),
+  };
+}
+
+export function Incubator() {
+  const [positions, setPositions] = useState<Positions>(() =>
+    copyLayout(LAYOUTS[0]),
+  );
+  const [activeWord, setActiveWord] = useState<WordId | null>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const layoutIndexRef = useRef(0);
+  const ideaNudgeIndexRef = useRef(0);
+
+  function nudgeIdeas() {
+    const nudge = IDEA_NUDGES[ideaNudgeIndexRef.current % IDEA_NUDGES.length];
+    ideaNudgeIndexRef.current += 1;
+
+    setPositions((current) => ({
+      ...current,
+      ideas: constrainPoint("ideas", {
+        x: current.ideas.x + nudge.x,
+        y: current.ideas.y + nudge.y,
+      }),
+    }));
+  }
+
+  function snapProducts() {
+    setPositions((current) => ({
+      ...current,
+      products: constrainPoint("products", {
+        x: Math.round(current.products.x * 8) / 8,
+        y: Math.round(current.products.y * 6) / 6,
+      }),
+    }));
+  }
+
+  function cycleExperiment() {
+    layoutIndexRef.current = (layoutIndexRef.current + 1) % LAYOUTS.length;
+    setPositions(copyLayout(LAYOUTS[layoutIndexRef.current]));
+  }
+
+  function gatherAroundArtworks() {
+    setPositions((current) => {
+      const anchor = current.artworks;
+
+      return {
+        artworks: current.artworks,
+        ideas: constrainPoint("ideas", {
+          x: current.ideas.x + (anchor.x - current.ideas.x) * 0.1,
+          y: current.ideas.y + (anchor.y - current.ideas.y) * 0.1,
+        }),
+        products: constrainPoint("products", {
+          x: current.products.x + (anchor.x - current.products.x) * 0.1,
+          y: current.products.y + (anchor.y - current.products.y) * 0.1,
+        }),
+        experiments: constrainPoint("experiments", {
+          x:
+            current.experiments.x +
+            (anchor.x - current.experiments.x) * 0.1,
+          y:
+            current.experiments.y +
+            (anchor.y - current.experiments.y) * 0.1,
+        }),
+      };
+    });
+  }
+
+  function activateWord(id: WordId) {
+    if (id === "ideas") {
+      nudgeIdeas();
+    } else if (id === "products") {
+      snapProducts();
+    } else if (id === "experiments") {
+      cycleExperiment();
+    } else {
+      gatherAroundArtworks();
+    }
+  }
+
+  function settleWord(id: WordId) {
+    if (id === "ideas") {
+      nudgeIdeas();
+    } else if (id === "products") {
+      snapProducts();
+    }
+  }
+
+  function handlePointerDown(
+    id: WordId,
+    event: PointerEvent<HTMLButtonElement>,
+  ) {
+    const field = fieldRef.current;
+
+    if (!field || event.button !== 0) {
+      return;
+    }
+
+    const fieldBounds = field.getBoundingClientRect();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      fieldWidth: fieldBounds.width,
+      fieldHeight: fieldBounds.height,
+      origin: positions[id],
+      moved: false,
+    };
+    setActiveWord(id);
+  }
+
+  function handlePointerMove(
+    id: WordId,
+    event: PointerEvent<HTMLButtonElement>,
+  ) {
+    const drag = dragRef.current;
+
+    if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const distanceX = event.clientX - drag.startX;
+    const distanceY = event.clientY - drag.startY;
+    const resistance = id === "artworks" ? 0.58 : 1;
+
+    if (Math.hypot(distanceX, distanceY) > 3) {
+      drag.moved = true;
+    }
+
+    setPositions((current) => ({
+      ...current,
+      [id]: constrainPoint(id, {
+        x: drag.origin.x + (distanceX / drag.fieldWidth) * resistance,
+        y: drag.origin.y + (distanceY / drag.fieldHeight) * resistance,
+      }),
+    }));
+  }
+
+  function handlePointerEnd(
+    id: WordId,
+    event: PointerEvent<HTMLButtonElement>,
+    cancelled = false,
+  ) {
+    const drag = dragRef.current;
+
+    if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragRef.current = null;
+    setActiveWord(null);
+
+    if (cancelled) {
+      return;
+    }
+
+    if (drag.moved) {
+      settleWord(id);
+    } else {
+      activateWord(id);
+    }
+  }
+
+  function handleKeyboardMove(
+    id: WordId,
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) {
+    const movement = id === "artworks" ? 0.025 : 0.04;
+    const movementByKey: Partial<Record<string, Point>> = {
+      ArrowLeft: { x: -movement, y: 0 },
+      ArrowRight: { x: movement, y: 0 },
+      ArrowUp: { x: 0, y: -movement },
+      ArrowDown: { x: 0, y: movement },
+    };
+    const delta = movementByKey[event.key];
+
+    if (!delta) {
+      return;
+    }
+
+    event.preventDefault();
+    setPositions((current) => ({
+      ...current,
+      [id]: constrainPoint(id, {
+        x: current[id].x + delta.x,
+        y: current[id].y + delta.y,
+      }),
+    }));
+  }
+
+  function handleKeyboardActivation(
+    id: WordId,
+    event: MouseEvent<HTMLButtonElement>,
+  ) {
+    if (event.detail === 0) {
+      activateWord(id);
+    }
+  }
+
+  return (
+    <div className="incubator">
+      <h1 className="wordmark" id="site-title" aria-label="OnceEgg">
+        <span className="wordmarkLetters" aria-hidden="true">
+          <span>OnceE</span>
+          <span className="wordmarkG wordmarkGFirst">g</span>
+          <span className="wordmarkG wordmarkGSecond">g</span>
+        </span>
+      </h1>
+
+      <div
+        className="incubatorField"
+        ref={fieldRef}
+        role="group"
+        aria-label="Ideas, products, experiments, and artworks."
+      >
+        <p className="visuallyHidden" id="incubator-instructions">
+          Drag the words, or use the arrow keys to rearrange them. Activate a
+          word to see how it behaves.
+        </p>
+
+        {WORDS.map(({ id, label }) => (
+          <button
+            className={`incubatorWord${activeWord === id ? " isActive" : ""}`}
+            data-word={id}
+            key={id}
+            type="button"
+            style={{
+              left: `${positions[id].x * 100}%`,
+              top: `${positions[id].y * 100}%`,
+            }}
+            aria-describedby="incubator-instructions"
+            onClick={(event) => handleKeyboardActivation(id, event)}
+            onKeyDown={(event) => handleKeyboardMove(id, event)}
+            onPointerCancel={(event) => handlePointerEnd(id, event, true)}
+            onPointerDown={(event) => handlePointerDown(id, event)}
+            onPointerMove={(event) => handlePointerMove(id, event)}
+            onPointerUp={(event) => handlePointerEnd(id, event)}
+          >
+            {label}
+            {id === "artworks" && <span className="orangePeriod">.</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
