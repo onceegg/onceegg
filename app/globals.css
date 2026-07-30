@@ -11,11 +11,11 @@
   --onceegg-tape-paper: #f8f8f4;
   --onceegg-tape-texture: url("/textures/watercolor-paper.jpg");
   --onceegg-tape-shadow:
-    drop-shadow(0.14rem 0.2rem 0.045rem rgb(52 46 36 / 10.5%))
-    drop-shadow(0.32rem 0.42rem 0.2rem rgb(52 46 36 / 5%));
+    drop-shadow(0.14rem 0.2rem 0.045rem rgb(52 46 36 / 11.55%))
+    drop-shadow(0.32rem 0.42rem 0.2rem rgb(52 46 36 / 5.5%));
   --onceegg-tape-shadow-lifted:
-    drop-shadow(0.18rem 0.26rem 0.055rem rgb(52 46 36 / 11%))
-    drop-shadow(0.42rem 0.56rem 0.28rem rgb(52 46 36 / 6%));
+    drop-shadow(0.18rem 0.26rem 0.055rem rgb(52 46 36 / 12.1%))
+    drop-shadow(0.42rem 0.56rem 0.28rem rgb(52 46 36 / 6.6%));
   --onceegg-ink: #161616;
   --onceegg-muted: #686868;
   --onceegg-blue: #486b87;
@@ -285,8 +285,11 @@ p {
 }
 
 .hatchingContent {
+  width: fit-content;
   max-width: 28rem;
-  margin-left: clamp(1.5rem, 18vw, 13rem);
+  margin-right: clamp(1.5rem, 18vw, 13rem);
+  margin-left: auto;
+  text-align: right;
 }
 
 .hatchingContent h2 {
@@ -743,10 +746,7 @@ p {
   }
 
   .hatchingContent {
-    width: fit-content;
     margin-right: clamp(1rem, 9vw, 2.5rem);
-    margin-left: auto;
-    text-align: right;
   }
 
   .hatchingContent h2 {
