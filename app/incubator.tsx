@@ -36,7 +36,7 @@ type DragState = {
 
 export type IncubatorNote = {
   slug: string;
-  title: string;
+  title?: string;
   date: string;
 };
 
@@ -408,7 +408,11 @@ export function Incubator({ notes }: IncubatorProps) {
                   top: `${nodePosition.y * 100}%`,
                 }}
                 tabIndex={notesOpen ? 0 : -1}
-                aria-label={`${formatNodeDate(note.date)} — ${note.title}`}
+                aria-label={
+                  note.title
+                    ? `${formatNodeDate(note.date)} — ${note.title}`
+                    : formatNodeDate(note.date)
+                }
               >
                 <span className="noteDateNodeInner">
                   <span className="noteDateDot" aria-hidden="true" />

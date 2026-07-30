@@ -20,6 +20,8 @@ const noteKindLabels: Record<NoteKind, string> = {
 };
 
 export function NoteSlip({ note, position }: NoteSlipProps) {
+  const isPlainNote = note.kind === "note" && !note.title;
+
   return (
     <article
       className="noteSlip"
@@ -27,13 +29,17 @@ export function NoteSlip({ note, position }: NoteSlipProps) {
       data-note-position={position % 4}
     >
       <Link className="noteSlipLink" href={`/notes/${note.slug}`}>
-        <div className="noteSlipMeta">
-          <span className="noteSlipKind">{noteKindLabels[note.kind]}</span>
+        <div className={`noteSlipMeta${isPlainNote ? " isPlainNote" : ""}`}>
+          {!isPlainNote && (
+            <span className="noteSlipKind">{noteKindLabels[note.kind]}</span>
+          )}
           <time dateTime={note.date}>{formatNoteDate(note.date)}</time>
         </div>
-        <h3 className="noteSlipTitle" lang={note.lang}>
-          {note.title}
-        </h3>
+        {note.title && (
+          <h3 className="noteSlipTitle" lang={note.lang}>
+            {note.title}
+          </h3>
+        )}
         {note.excerpt && (
           <p className="noteSlipExcerpt" lang={note.lang}>
             {note.excerpt}

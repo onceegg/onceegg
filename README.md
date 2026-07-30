@@ -45,9 +45,7 @@ Start the file with:
 
 ```markdown
 ---
-title: My note
 date: 2026-07-30
-excerpt: A short line shown on the note slip.
 lang: en
 ---
 
@@ -55,8 +53,10 @@ Write the note here.
 ```
 
 Use `lang: zh` for a Chinese entry. Notes are public once the repository is
-deployed. The note body supports paragraphs, `##` and `###` headings,
-blockquotes, unordered lists, and horizontal rules.
+deployed. A plain note needs no title: its date and body are the visible
+content. Add `title`, `excerpt`, or `kind` only when an entry genuinely needs
+them. The note body supports paragraphs, `##` and `###` headings, blockquotes,
+unordered lists, and horizontal rules.
 
 ## Deploying to Vercel
 

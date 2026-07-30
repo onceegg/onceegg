@@ -13,7 +13,7 @@ export type NoteKind = (typeof noteKinds)[number];
 
 export type NoteSummary = {
   slug: string;
-  title: string;
+  title?: string;
   date: string;
   excerpt: string;
   lang: string;
@@ -61,8 +61,8 @@ function readFrontmatter(fileName: string, source: string): Note {
   const kind = values.get("kind")?.toLowerCase() ?? "note";
   const body = match[2].trim();
 
-  if (!title || !date) {
-    throw new Error(`${fileName} needs both a title and a date.`);
+  if (!date) {
+    throw new Error(`${fileName} needs a date.`);
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {

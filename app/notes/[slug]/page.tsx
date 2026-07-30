@@ -27,7 +27,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${note.title} — OnceEgg`,
+    title: `${note.title || formatNoteDate(note.date)} — OnceEgg`,
     description: note.excerpt || "A note from OnceEgg.",
   };
 }
@@ -50,9 +50,11 @@ export default async function NotePage({ params }: NotePageProps) {
       </header>
 
       <article className="noteArticle" lang={note.lang}>
-        <header className="noteArticleHeader">
+        <header
+          className={`noteArticleHeader${note.title ? "" : " isUntitled"}`}
+        >
           <time dateTime={note.date}>{formatNoteDate(note.date)}</time>
-          <h1>{note.title}</h1>
+          {note.title && <h1>{note.title}</h1>}
         </header>
         {note.body && <NoteContent body={note.body} />}
       </article>

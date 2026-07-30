@@ -356,6 +356,10 @@ p {
   line-height: 1.45;
 }
 
+.noteSlipMeta.isPlainNote {
+  justify-content: flex-end;
+}
+
 .noteSlipKind {
   --note-tape-surface: var(--onceegg-tape-blue);
   --note-tape-ink: var(--onceegg-blue);
@@ -424,6 +428,16 @@ p {
   color: var(--onceegg-muted);
   font-size: clamp(0.76rem, 1vw, 0.84rem);
   line-height: 1.65;
+}
+
+.noteSlipMeta.isPlainNote + .noteSlipExcerpt {
+  max-width: none;
+}
+
+.noteSlipExcerpt:lang(zh),
+.noteBody p:lang(zh) {
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 .sectionClosing {
@@ -530,6 +544,10 @@ p {
   margin-bottom: clamp(3.5rem, 9svh, 6rem);
 }
 
+.noteArticleHeader.isUntitled {
+  margin-bottom: clamp(2rem, 5svh, 3.5rem);
+}
+
 .noteArticleHeader time {
   display: block;
   margin-bottom: 1.15rem;
@@ -537,6 +555,10 @@ p {
   font-family: var(--onceegg-font-label);
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.noteArticleHeader.isUntitled time {
+  margin-bottom: 0;
 }
 
 .noteArticleHeader h1 {
