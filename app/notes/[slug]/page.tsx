@@ -44,8 +44,12 @@ export default async function NotePage({ params }: NotePageProps) {
     <main className="journalPage notePage">
       <header className="notePageHeader">
         <JournalWordmark />
-        <Link className="allNotesLink" href="/notes">
-          All notes
+        <Link
+          aria-label="Back to all notes"
+          className="backLink"
+          href="/notes"
+        >
+          ← Back
         </Link>
       </header>
 

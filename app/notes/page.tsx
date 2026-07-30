@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { JournalWordmark } from "@/components/journal-wordmark";
 import { NoteSlip } from "@/components/note-slip";
@@ -15,7 +16,12 @@ export default function NotesPage() {
   return (
     <main className="journalPage">
       <header className="journalHeader">
-        <JournalWordmark />
+        <div className="journalTopbar">
+          <JournalWordmark />
+          <Link aria-label="Back to OnceEgg home" className="backLink" href="/">
+            ← Back
+          </Link>
+        </div>
         <div className="journalIntroduction">
           <h1>Notes</h1>
           <p>Written as they happen.</p>

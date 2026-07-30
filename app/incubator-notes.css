@@ -1,9 +1,8 @@
 .incubatorWord[data-word="notes"] {
   --tape-surface: var(--onceegg-tape-blue);
   --tape-tilt: 0.18deg;
-
-  background-position: 71% 68%;
-  clip-path: polygon(
+  --tape-position: 71% 68%;
+  --tape-clip: polygon(
     2% 0,
     98% 1.5%,
     100% 24%,

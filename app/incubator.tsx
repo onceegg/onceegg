@@ -461,8 +461,10 @@ export function Incubator({ notes }: IncubatorProps) {
             onPointerMove={(event) => handlePointerMove(id, event)}
             onPointerUp={(event) => handlePointerEnd(id, event)}
           >
-            {label}
-            {id === "notes" && <span className="orangePeriod">.</span>}
+            <span className="incubatorWordSurface">
+              <span className="incubatorWordLabel">{label}</span>
+              {id === "notes" && <span className="orangePeriod">.</span>}
+            </span>
           </button>
         ))}
       </div>

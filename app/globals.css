@@ -11,8 +11,11 @@
   --onceegg-tape-paper: #f8f8f4;
   --onceegg-tape-texture: url("/textures/watercolor-paper.jpg");
   --onceegg-tape-shadow:
-    drop-shadow(0.1rem 0.18rem 0.07rem rgb(52 46 36 / 46%))
-    drop-shadow(0.24rem 0.38rem 0.28rem rgb(52 46 36 / 25%));
+    drop-shadow(0.14rem 0.2rem 0.045rem rgb(52 46 36 / 10.5%))
+    drop-shadow(0.32rem 0.42rem 0.2rem rgb(52 46 36 / 5%));
+  --onceegg-tape-shadow-lifted:
+    drop-shadow(0.18rem 0.26rem 0.055rem rgb(52 46 36 / 11%))
+    drop-shadow(0.42rem 0.56rem 0.28rem rgb(52 46 36 / 6%));
   --onceegg-ink: #161616;
   --onceegg-muted: #686868;
   --onceegg-blue: #486b87;
@@ -106,25 +109,7 @@ p {
 }
 
 .incubatorWord {
-  --tape-surface: var(--onceegg-tape-paper);
-  --tape-tilt: -0.35deg;
-
-  position: absolute;
-  z-index: 1;
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  appearance: none;
-  margin: 0;
-  padding: 0.68rem 1.08rem 0.66rem;
-  border: 0;
-  background-color: var(--tape-surface);
-  background-image: var(--onceegg-tape-texture);
-  background-position: 18% 24%;
-  background-repeat: no-repeat;
-  background-size: 16rem 16rem;
-  background-blend-mode: multiply;
-  clip-path: polygon(
+  --tape-clip: polygon(
     2.5% 2%,
     98% 0,
     100% 25%,
@@ -136,6 +121,20 @@ p {
     1.5% 51%,
     0 24%
   );
+  --tape-position: 18% 24%;
+  --tape-surface: var(--onceegg-tape-paper);
+  --tape-tilt: -0.35deg;
+
+  position: absolute;
+  z-index: 1;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--onceegg-ink);
   cursor: grab;
   filter: var(--onceegg-tape-shadow);
@@ -148,6 +147,10 @@ p {
   opacity: 0.94;
   transform: translate(-50%, -50%) rotate(var(--tape-tilt));
   transform-origin: center;
+  width: max-content;
+  max-width: none;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   touch-action: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -156,7 +159,28 @@ p {
     left 520ms cubic-bezier(0.16, 1, 0.3, 1),
     color 160ms ease-out,
     opacity 160ms ease-out,
-    background-color 180ms ease-out;
+    filter 180ms ease-out,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.incubatorWordSurface {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0.68rem 1.08rem 0.66rem;
+  background-color: var(--tape-surface);
+  background-image: var(--onceegg-tape-texture);
+  background-position: var(--tape-position);
+  background-repeat: no-repeat;
+  background-size: 16rem 16rem;
+  background-blend-mode: multiply;
+  clip-path: var(--tape-clip);
+}
+
+.incubatorWordLabel,
+.incubatorWord .orangePeriod {
+  flex: none;
+  white-space: nowrap;
 }
 
 .incubatorWord:focus-visible {
@@ -167,9 +191,13 @@ p {
 .incubatorWord:focus-visible,
 .incubatorWord.isActive {
   cursor: grabbing;
+  filter: var(--onceegg-tape-shadow-lifted);
   opacity: 1;
-  transform: translate(-50%, -50%) rotate(0deg);
-  transition: color 120ms ease-out;
+  transform: translate(-50%, -50%) rotate(0deg) scale(1.04);
+  transition:
+    color 120ms ease-out,
+    filter 140ms ease-out,
+    transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
   will-change: top, left;
 }
 
@@ -184,9 +212,8 @@ p {
 .incubatorWord[data-word="products"] {
   --tape-surface: var(--onceegg-tape-neutral);
   --tape-tilt: 0.3deg;
-
-  background-position: 63% 48%;
-  clip-path: polygon(
+  --tape-position: 63% 48%;
+  --tape-clip: polygon(
     1.5% 0,
     98.2% 2%,
     100% 30%,
@@ -203,8 +230,8 @@ p {
 .incubatorWord[data-word="experiments"] {
   --tape-surface: var(--onceegg-tape-warm);
   --tape-tilt: -0.2deg;
+  --tape-position: 82% 17%;
 
-  background-position: 82% 17%;
   color: var(--onceegg-ink);
   opacity: 1;
 }
@@ -212,9 +239,8 @@ p {
 .incubatorWord[data-word="artworks"] {
   --tape-surface: var(--onceegg-tape-paper);
   --tape-tilt: 0.4deg;
-
-  background-position: 36% 83%;
-  clip-path: polygon(
+  --tape-position: 36% 83%;
+  --tape-clip: polygon(
     2.2% 1.5%,
     97.5% 0,
     99.3% 22%,
@@ -275,7 +301,7 @@ p {
   color: var(--onceegg-orange);
 }
 
-.allNotesLink,
+.backLink,
 .notePageFooter a {
   color: var(--onceegg-muted);
   font-family: var(--onceegg-font-label);
@@ -389,9 +415,7 @@ p {
     0 16%
   );
   color: var(--note-tape-ink);
-  filter:
-    drop-shadow(0.07rem 0.13rem 0.04rem rgb(52 46 36 / 42%))
-    drop-shadow(0.15rem 0.25rem 0.16rem rgb(52 46 36 / 22%));
+  filter: var(--onceegg-tape-shadow);
   font-family: var(--onceegg-font-label);
   line-height: 1;
   transform: rotate(-0.45deg);
@@ -465,6 +489,13 @@ p {
   min-height: clamp(18rem, 46svh, 31rem);
 }
 
+.journalTopbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
 .journalWordmark {
   display: inline-block;
   color: var(--onceegg-ink);
@@ -478,7 +509,7 @@ p {
 }
 
 .journalWordmark:focus-visible,
-.allNotesLink:focus-visible,
+.backLink:focus-visible,
 .notePageFooter a:focus-visible {
   outline: 1px solid var(--onceegg-ink);
   outline-offset: 0.25rem;
@@ -491,10 +522,11 @@ p {
 }
 
 .journalIntroduction h1 {
-  font-size: clamp(1.45rem, 2.6vw, 2.25rem);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+  font-family: var(--onceegg-font-label);
+  font-size: clamp(1.15rem, 1.7vw, 1.5rem);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
 }
 
 .journalIntroduction p {
@@ -530,7 +562,7 @@ p {
   gap: 2rem;
 }
 
-.allNotesLink {
+.backLink {
   text-decoration: underline;
   text-decoration-color: var(--onceegg-line);
 }
@@ -647,7 +679,14 @@ p {
   }
 
   .incubatorWord:hover {
+    filter: var(--onceegg-tape-shadow-lifted);
     opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--tape-tilt)) scale(1.035);
+  }
+
+  .incubatorWord.isActive:hover,
+  .incubatorWord:focus-visible:hover {
+    transform: translate(-50%, -50%) rotate(0deg) scale(1.04);
   }
 
   .incubatorWord[data-word="ideas"]:hover,
@@ -676,7 +715,7 @@ p {
     background: var(--onceegg-note-neutral);
   }
 
-  .allNotesLink:hover,
+  .backLink:hover,
   .notePageFooter a:hover {
     color: var(--onceegg-ink);
     text-decoration-color: currentColor;
@@ -704,7 +743,14 @@ p {
   }
 
   .hatchingContent {
-    margin-left: clamp(1rem, 9vw, 2.5rem);
+    width: fit-content;
+    margin-right: clamp(1rem, 9vw, 2.5rem);
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .hatchingContent h2 {
+    color: var(--onceegg-paper-white);
   }
 
   .sectionHatching {
@@ -773,7 +819,7 @@ p {
 @media (prefers-reduced-motion: reduce) {
   .hatchingContent h2,
   .noteSlipLink,
-  .allNotesLink,
+  .backLink,
   .notePageFooter a {
     transition: none;
   }
