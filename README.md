@@ -32,6 +32,32 @@ npm run lint
 npm run build
 ```
 
+## Writing a public note
+
+Create a Markdown file in `content/notes`. Use the date and a short slug for the
+filename:
+
+```text
+content/notes/2026-07-30-my-note.md
+```
+
+Start the file with:
+
+```markdown
+---
+title: My note
+date: 2026-07-30
+excerpt: A short line shown on the note slip.
+lang: en
+---
+
+Write the note here.
+```
+
+Use `lang: zh` for a Chinese entry. Notes are public once the repository is
+deployed. The note body supports paragraphs, `##` and `###` headings,
+blockquotes, unordered lists, and horizontal rules.
+
 ## Deploying to Vercel
 
 Import this repository into Vercel and keep the automatically detected Next.js settings. No custom build command or configuration is required. A custom domain can be connected later after the site has been reviewed.

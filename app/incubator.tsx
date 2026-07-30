@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useRef,
   useState,
@@ -8,7 +9,7 @@ import {
   type PointerEvent,
 } from "react";
 
-type WordId = "ideas" | "products" | "experiments" | "artworks";
+type WordId = "ideas" | "products" | "experiments" | "artworks" | "notes";
 
 type Point = {
   x: number;
@@ -33,31 +34,45 @@ type DragState = {
   moved: boolean;
 };
 
+export type IncubatorNote = {
+  slug: string;
+  title: string;
+  date: string;
+};
+
+type IncubatorProps = {
+  notes: IncubatorNote[];
+};
+
 const WORDS: Array<{ id: WordId; label: string }> = [
   { id: "ideas", label: "Ideas," },
   { id: "products", label: "products," },
   { id: "experiments", label: "experiments," },
-  { id: "artworks", label: "and artworks" },
+  { id: "artworks", label: "artworks," },
+  { id: "notes", label: "and notes" },
 ];
 
 const LAYOUTS: Positions[] = [
   {
     ideas: { x: 0.14, y: 0.2 },
-    products: { x: 0.67, y: 0.28 },
-    experiments: { x: 0.3, y: 0.67 },
+    products: { x: 0.67, y: 0.24 },
+    experiments: { x: 0.27, y: 0.65 },
     artworks: { x: 0.72, y: 0.78 },
+    notes: { x: 0.52, y: 0.45 },
   },
   {
     ideas: { x: 0.64, y: 0.16 },
     products: { x: 0.2, y: 0.38 },
     experiments: { x: 0.68, y: 0.6 },
     artworks: { x: 0.34, y: 0.82 },
+    notes: { x: 0.79, y: 0.84 },
   },
   {
     ideas: { x: 0.2, y: 0.76 },
     products: { x: 0.7, y: 0.74 },
     experiments: { x: 0.52, y: 0.22 },
-    artworks: { x: 0.34, y: 0.48 },
+    artworks: { x: 0.32, y: 0.46 },
+    notes: { x: 0.78, y: 0.42 },
   },
 ];
 
@@ -68,11 +83,27 @@ const IDEA_NUDGES: Point[] = [
   { x: -0.04, y: -0.03 },
 ];
 
+const NOTE_NODE_OFFSETS: Point[] = [
+  { x: 0.14, y: -0.08 },
+  { x: -0.14, y: 0.07 },
+  { x: 0.18, y: 0.08 },
+  { x: -0.17, y: -0.09 },
+  { x: 0.02, y: -0.17 },
+  { x: 0.16, y: 0.17 },
+  { x: -0.15, y: 0.18 },
+  { x: 0.21, y: -0.03 },
+  { x: -0.21, y: 0.01 },
+  { x: 0.1, y: -0.2 },
+  { x: -0.09, y: -0.19 },
+  { x: 0.04, y: 0.22 },
+];
+
 const HORIZONTAL_LIMITS: Record<WordId, HorizontalLimits> = {
   ideas: { minimum: 0.07, maximum: 0.9 },
   products: { minimum: 0.08, maximum: 0.86 },
   experiments: { minimum: 0.1, maximum: 0.8 },
   artworks: { minimum: 0.12, maximum: 0.78 },
+  notes: { minimum: 0.16, maximum: 0.84 },
 };
 
 function copyLayout(layout: Positions): Positions {
@@ -81,6 +112,7 @@ function copyLayout(layout: Positions): Positions {
     products: { ...layout.products },
     experiments: { ...layout.experiments },
     artworks: { ...layout.artworks },
+    notes: { ...layout.notes },
   };
 }
 
@@ -97,11 +129,33 @@ function constrainPoint(id: WordId, point: Point): Point {
   };
 }
 
-export function Incubator() {
+function getNodePosition(anchor: Point, index: number): Point {
+  const offset = NOTE_NODE_OFFSETS[index % NOTE_NODE_OFFSETS.length];
+
+  return {
+    x: clamp(anchor.x + offset.x, 0.08, 0.92),
+    y: clamp(anchor.y + offset.y, 0.08, 0.92),
+  };
+}
+
+function getIndexPosition(anchor: Point): Point {
+  return {
+    x: clamp(anchor.x - 0.09, 0.1, 0.9),
+    y: clamp(anchor.y + 0.1, 0.1, 0.9),
+  };
+}
+
+function formatNodeDate(date: string) {
+  const [year, month, day] = date.split("-");
+  return `${day}.${month}.${year.slice(-2)}`;
+}
+
+export function Incubator({ notes }: IncubatorProps) {
   const [positions, setPositions] = useState<Positions>(() =>
     copyLayout(LAYOUTS[0]),
   );
   const [activeWord, setActiveWord] = useState<WordId | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const layoutIndexRef = useRef(0);
@@ -157,11 +211,22 @@ export function Incubator() {
             current.experiments.y +
             (anchor.y - current.experiments.y) * 0.1,
         }),
+        notes: constrainPoint("notes", {
+          x: current.notes.x + (anchor.x - current.notes.x) * 0.1,
+          y: current.notes.y + (anchor.y - current.notes.y) * 0.1,
+        }),
       };
     });
   }
 
   function activateWord(id: WordId) {
+    if (id === "notes") {
+      setNotesOpen((current) => !current);
+      return;
+    }
+
+    setNotesOpen(false);
+
     if (id === "ideas") {
       nudgeIdeas();
     } else if (id === "products") {
@@ -266,6 +331,11 @@ export function Incubator() {
     id: WordId,
     event: KeyboardEvent<HTMLButtonElement>,
   ) {
+    if (id === "notes" && event.key === "Escape") {
+      setNotesOpen(false);
+      return;
+    }
+
     const movement = id === "artworks" ? 0.025 : 0.04;
     const movementByKey: Partial<Record<string, Point>> = {
       ArrowLeft: { x: -movement, y: 0 },
@@ -298,30 +368,78 @@ export function Incubator() {
     }
   }
 
+  const indexPosition = getIndexPosition(positions.notes);
+
   return (
     <div className="incubator">
-      <h1 className="wordmark" id="site-title" aria-label="OnceEgg">
-        <span className="wordmarkLetters" aria-hidden="true">
-          <span>OnceE</span>
-          <span className="wordmarkG wordmarkGFirst">g</span>
-          <span className="wordmarkG wordmarkGSecond">g</span>
-        </span>
+      <h1 className="wordmark" id="site-title">
+        OnceEgg
       </h1>
 
       <div
         className="incubatorField"
         ref={fieldRef}
         role="group"
-        aria-label="Ideas, products, experiments, and artworks."
+        aria-label="Ideas, products, experiments, artworks, and notes."
       >
         <p className="visuallyHidden" id="incubator-instructions">
           Drag the words, or use the arrow keys to rearrange them. Activate a
-          word to see how it behaves.
+          word to see how it behaves. Notes reveals recent diary entries.
         </p>
+
+        <div
+          className={`noteConstellation${notesOpen ? " isOpen" : ""}`}
+          id="incubator-notes"
+          role="group"
+          aria-label="Recent notes"
+          aria-hidden={!notesOpen}
+        >
+          {notes.map((note, index) => {
+            const nodePosition = getNodePosition(positions.notes, index);
+
+            return (
+              <Link
+                className="noteDateNode"
+                data-node-variant={index % 4}
+                href={`/notes/${note.slug}`}
+                key={note.slug}
+                style={{
+                  left: `${nodePosition.x * 100}%`,
+                  top: `${nodePosition.y * 100}%`,
+                }}
+                tabIndex={notesOpen ? 0 : -1}
+                aria-label={`${formatNodeDate(note.date)} — ${note.title}`}
+              >
+                <span className="noteDateNodeInner">
+                  <span className="noteDateDot" aria-hidden="true" />
+                  <time dateTime={note.date}>{formatNodeDate(note.date)}</time>
+                </span>
+              </Link>
+            );
+          })}
+
+          <Link
+            className="noteConstellationIndex"
+            href="/notes"
+            style={{
+              left: `${indexPosition.x * 100}%`,
+              top: `${indexPosition.y * 100}%`,
+            }}
+            tabIndex={notesOpen ? 0 : -1}
+          >
+            all notes
+          </Link>
+        </div>
 
         {WORDS.map(({ id, label }) => (
           <button
-            className={`incubatorWord${activeWord === id ? " isActive" : ""}`}
+            className={[
+              "incubatorWord",
+              activeWord === id ? "isActive" : "",
+              id === "notes" && notesOpen ? "hasOpenNotes" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             data-word={id}
             key={id}
             type="button"
@@ -329,7 +447,9 @@ export function Incubator() {
               left: `${positions[id].x * 100}%`,
               top: `${positions[id].y * 100}%`,
             }}
+            aria-controls={id === "notes" ? "incubator-notes" : undefined}
             aria-describedby="incubator-instructions"
+            aria-expanded={id === "notes" ? notesOpen : undefined}
             onClick={(event) => handleKeyboardActivation(id, event)}
             onKeyDown={(event) => handleKeyboardMove(id, event)}
             onPointerCancel={(event) => handlePointerEnd(id, event, true)}
@@ -338,7 +458,7 @@ export function Incubator() {
             onPointerUp={(event) => handlePointerEnd(id, event)}
           >
             {label}
-            {id === "artworks" && <span className="orangePeriod">.</span>}
+            {id === "notes" && <span className="orangePeriod">.</span>}
           </button>
         ))}
       </div>

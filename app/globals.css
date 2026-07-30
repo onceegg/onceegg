@@ -1,11 +1,26 @@
 :root {
   --onceegg-background: #fefefd;
   --onceegg-paper-white: #ffffff;
+  --onceegg-note-blue: #f2f6f8;
+  --onceegg-note-warm: #faf5f0;
+  --onceegg-note-neutral: #f6f6f2;
+  --onceegg-line: #e9e9e3;
+  --onceegg-tape-blue: #eaf1f4;
+  --onceegg-tape-warm: #f7eee6;
+  --onceegg-tape-neutral: #f1f1ec;
+  --onceegg-tape-paper: #f8f8f4;
+  --onceegg-tape-texture: url("/textures/watercolor-paper.jpg");
+  --onceegg-tape-shadow:
+    drop-shadow(0.1rem 0.18rem 0.07rem rgb(52 46 36 / 46%))
+    drop-shadow(0.24rem 0.38rem 0.28rem rgb(52 46 36 / 25%));
   --onceegg-ink: #161616;
   --onceegg-muted: #686868;
   --onceegg-blue: #486b87;
   --onceegg-orange: #ad704d;
   --onceegg-orange-ink: #8b5334;
+  --onceegg-font-reading: var(--font-newsreader), "Iowan Old Style",
+    "Palatino Linotype", Georgia, serif;
+  --onceegg-font-label: var(--font-courier-prime), "Courier New", monospace;
 }
 
 * {
@@ -17,18 +32,33 @@ html {
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   min-width: 20rem;
   margin: 0;
-  background: var(--onceegg-background);
+  background: transparent;
   color: var(--onceegg-ink);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Helvetica Neue",
-    Arial, sans-serif;
+  font-family: var(--onceegg-font-reading);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background-image: var(--onceegg-tape-texture);
+  background-position: center top;
+  background-repeat: repeat;
+  background-size: 48rem 48rem;
+  content: "";
+  opacity: 0.12;
+  pointer-events: none;
+}
+
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -59,30 +89,12 @@ p {
 .wordmark {
   width: fit-content;
   color: var(--onceegg-ink);
-  font-size: clamp(2.1rem, 3.4vw, 3.2rem);
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  line-height: 1.1;
+  font-family: var(--onceegg-font-label);
+  font-size: clamp(1.9rem, 3.2vw, 3rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
   white-space: nowrap;
-}
-
-.wordmarkLetters,
-.wordmarkG {
-  display: inline-block;
-}
-
-.wordmarkG {
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.wordmarkGFirst {
-  color: var(--onceegg-blue);
-  transform: translateY(-0.04em);
-}
-
-.wordmarkGSecond {
-  color: var(--onceegg-orange-ink);
-  transform: translateY(0.06em);
 }
 
 .incubatorField {
@@ -94,22 +106,48 @@ p {
 }
 
 .incubatorWord {
+  --tape-surface: var(--onceegg-tape-paper);
+  --tape-tilt: -0.35deg;
+
   position: absolute;
   z-index: 1;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
   appearance: none;
   margin: 0;
-  padding: 0.5rem;
+  padding: 0.68rem 1.08rem 0.66rem;
   border: 0;
-  background: transparent;
+  background-color: var(--tape-surface);
+  background-image: var(--onceegg-tape-texture);
+  background-position: 18% 24%;
+  background-repeat: no-repeat;
+  background-size: 16rem 16rem;
+  background-blend-mode: multiply;
+  clip-path: polygon(
+    2.5% 2%,
+    98% 0,
+    100% 25%,
+    98.5% 51%,
+    100% 76%,
+    97.2% 100%,
+    2% 98.5%,
+    0 76%,
+    1.5% 51%,
+    0 24%
+  );
   color: var(--onceegg-ink);
   cursor: grab;
+  filter: var(--onceegg-tape-shadow);
   font: inherit;
-  font-size: clamp(1rem, 2vw, 1.55rem);
+  font-family: var(--onceegg-font-label);
+  font-size: clamp(0.95rem, 4vw, 1.08rem);
   font-weight: 400;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
   line-height: 1.2;
-  opacity: 0.82;
-  transform: translate(-50%, -50%);
+  opacity: 0.94;
+  transform: translate(-50%, -50%) rotate(var(--tape-tilt));
+  transform-origin: center;
   touch-action: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -117,30 +155,77 @@ p {
     top 520ms cubic-bezier(0.16, 1, 0.3, 1),
     left 520ms cubic-bezier(0.16, 1, 0.3, 1),
     color 160ms ease-out,
-    opacity 160ms ease-out;
+    opacity 160ms ease-out,
+    background-color 180ms ease-out;
 }
 
 .incubatorWord:focus-visible {
-  outline: 1px solid rgb(22 22 22 / 40%);
-  outline-offset: 0.15rem;
+  outline: 2px solid var(--onceegg-ink);
+  outline-offset: 0.2rem;
 }
 
 .incubatorWord:focus-visible,
 .incubatorWord.isActive {
   cursor: grabbing;
   opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg);
   transition: color 120ms ease-out;
   will-change: top, left;
 }
 
 .incubatorWord[data-word="ideas"] {
-  color: var(--onceegg-blue);
+  --tape-surface: var(--onceegg-tape-blue);
+  --tape-tilt: -0.45deg;
+
+  color: var(--onceegg-ink);
   opacity: 1;
 }
 
+.incubatorWord[data-word="products"] {
+  --tape-surface: var(--onceegg-tape-neutral);
+  --tape-tilt: 0.3deg;
+
+  background-position: 63% 48%;
+  clip-path: polygon(
+    1.5% 0,
+    98.2% 2%,
+    100% 30%,
+    98% 54%,
+    99.5% 82%,
+    97.5% 99%,
+    1.8% 100%,
+    0 70%,
+    1.2% 44%,
+    0 18%
+  );
+}
+
 .incubatorWord[data-word="experiments"] {
-  color: var(--onceegg-orange-ink);
+  --tape-surface: var(--onceegg-tape-warm);
+  --tape-tilt: -0.2deg;
+
+  background-position: 82% 17%;
+  color: var(--onceegg-ink);
   opacity: 1;
+}
+
+.incubatorWord[data-word="artworks"] {
+  --tape-surface: var(--onceegg-tape-paper);
+  --tape-tilt: 0.4deg;
+
+  background-position: 36% 83%;
+  clip-path: polygon(
+    2.2% 1.5%,
+    97.5% 0,
+    99.3% 22%,
+    98% 47%,
+    100% 72%,
+    98% 100%,
+    1.5% 98%,
+    0.8% 79%,
+    2% 50%,
+    0 21%
+  );
 }
 
 .incubatorWord[data-word="ideas"]:focus-visible,
@@ -190,6 +275,157 @@ p {
   color: var(--onceegg-orange);
 }
 
+.allNotesLink,
+.notePageFooter a {
+  color: var(--onceegg-muted);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-decoration-thickness: 1px;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.25em;
+  transition:
+    color 180ms ease-out,
+    text-decoration-color 180ms ease-out;
+}
+
+.notesArchiveGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: clamp(1rem, 2.2vw, 2rem);
+  row-gap: clamp(2rem, 7svh, 5rem);
+}
+
+.noteSlip {
+  grid-column: 2 / span 4;
+  align-self: start;
+}
+
+.noteSlip[data-note-position="1"] {
+  grid-column: 7 / span 4;
+  margin-top: clamp(2rem, 7svh, 5rem);
+}
+
+.noteSlip[data-note-position="2"] {
+  grid-column: 4 / span 5;
+}
+
+.noteSlip[data-note-position="3"] {
+  grid-column: 8 / span 4;
+  margin-top: clamp(1rem, 4svh, 3rem);
+}
+
+.noteSlipLink {
+  display: flex;
+  min-height: clamp(11rem, 20vw, 15rem);
+  flex-direction: column;
+  padding: clamp(1rem, 2.2vw, 1.6rem);
+  background: var(--onceegg-note-blue);
+  color: var(--onceegg-ink);
+  text-decoration: none;
+  transition: background-color 220ms ease-out;
+}
+
+.noteSlip[data-note-position="1"] .noteSlipLink {
+  background: var(--onceegg-note-neutral);
+}
+
+.noteSlip[data-note-position="2"] .noteSlipLink {
+  background: var(--onceegg-note-warm);
+}
+
+.noteSlip[data-note-position="3"] .noteSlipLink {
+  background: var(--onceegg-paper-white);
+  outline: 1px solid var(--onceegg-line);
+  outline-offset: -1px;
+}
+
+.noteSlipLink:focus-visible {
+  outline: 1px solid var(--onceegg-ink);
+  outline-offset: 0.25rem;
+}
+
+.noteSlipMeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--onceegg-muted);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.noteSlipKind {
+  --note-tape-surface: var(--onceegg-tape-blue);
+  --note-tape-ink: var(--onceegg-blue);
+
+  display: inline-flex;
+  min-height: 1.7rem;
+  align-items: center;
+  margin-top: -0.38rem;
+  margin-left: -0.48rem;
+  padding: 0.25rem 0.62rem 0.24rem;
+  background-color: var(--note-tape-surface);
+  background-image: var(--onceegg-tape-texture);
+  background-position: 28% 62%;
+  background-repeat: no-repeat;
+  background-size: 11rem 11rem;
+  background-blend-mode: multiply;
+  clip-path: polygon(
+    3% 2%,
+    97% 0,
+    100% 31%,
+    98% 58%,
+    100% 84%,
+    96% 100%,
+    2% 98%,
+    0 69%,
+    2% 42%,
+    0 16%
+  );
+  color: var(--note-tape-ink);
+  filter:
+    drop-shadow(0.07rem 0.13rem 0.04rem rgb(52 46 36 / 42%))
+    drop-shadow(0.15rem 0.25rem 0.16rem rgb(52 46 36 / 22%));
+  font-family: var(--onceegg-font-label);
+  line-height: 1;
+  transform: rotate(-0.45deg);
+}
+
+.noteSlip[data-note-kind="product"] .noteSlipKind,
+.noteSlip[data-note-kind="artwork"] .noteSlipKind {
+  --note-tape-surface: var(--onceegg-tape-neutral);
+  --note-tape-ink: var(--onceegg-muted);
+}
+
+.noteSlip[data-note-kind="experiment"] .noteSlipKind {
+  --note-tape-surface: var(--onceegg-tape-warm);
+  --note-tape-ink: var(--onceegg-orange-ink);
+}
+
+.noteSlip[data-note-kind="product"] .noteSlipKind,
+.noteSlip[data-note-kind="experiment"] .noteSlipKind {
+  transform: rotate(0.35deg);
+}
+
+.noteSlipTitle {
+  margin-top: auto;
+  padding-top: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(1rem, 1.45vw, 1.2rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+.noteSlipExcerpt {
+  max-width: 31ch;
+  margin-top: 0.75rem;
+  color: var(--onceegg-muted);
+  font-size: clamp(0.76rem, 1vw, 0.84rem);
+  line-height: 1.65;
+}
+
 .sectionClosing {
   padding-top: clamp(2rem, 5svh, 4rem);
 }
@@ -198,8 +434,184 @@ p {
   width: fit-content;
   margin-left: clamp(1.5rem, 18vw, 13rem);
   color: var(--onceegg-orange-ink);
+  font-family: var(--onceegg-font-label);
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+.journalPage {
+  min-height: 100svh;
+  width: min(100%, 90rem);
+  margin-inline: auto;
+  padding: clamp(3rem, 7svh, 5rem) clamp(1.5rem, 6vw, 6rem)
+    clamp(2.5rem, 6svh, 4.5rem);
+}
+
+.journalHeader {
+  min-height: clamp(18rem, 46svh, 31rem);
+}
+
+.journalWordmark {
+  display: inline-block;
+  color: var(--onceegg-ink);
+  font-family: var(--onceegg-font-label);
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.journalWordmark:focus-visible,
+.allNotesLink:focus-visible,
+.notePageFooter a:focus-visible {
+  outline: 1px solid var(--onceegg-ink);
+  outline-offset: 0.25rem;
+}
+
+.journalIntroduction {
+  width: fit-content;
+  margin-top: clamp(7rem, 18svh, 12rem);
+  margin-left: clamp(1.5rem, 18vw, 13rem);
+}
+
+.journalIntroduction h1 {
+  font-size: clamp(1.45rem, 2.6vw, 2.25rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.journalIntroduction p {
+  margin-top: 0.8rem;
+  color: var(--onceegg-muted);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.notesArchive {
+  min-height: 40svh;
+  padding-bottom: clamp(8rem, 18svh, 13rem);
+}
+
+.emptyNotes {
+  margin-left: clamp(1.5rem, 18vw, 13rem);
+  color: var(--onceegg-muted);
+  font-size: 0.82rem;
+}
+
+.journalFooter {
+  color: var(--onceegg-orange-ink);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.notePageHeader {
+  display: flex;
+  min-height: clamp(13rem, 33svh, 22rem);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.allNotesLink {
+  text-decoration: underline;
+  text-decoration-color: var(--onceegg-line);
+}
+
+.noteArticle {
+  max-width: 50rem;
+  margin-left: clamp(0rem, 13vw, 11rem);
+}
+
+.noteArticleHeader {
+  margin-bottom: clamp(3.5rem, 9svh, 6rem);
+}
+
+.noteArticleHeader time {
+  display: block;
+  margin-bottom: 1.15rem;
+  color: var(--onceegg-blue);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.noteArticleHeader h1 {
+  max-width: 14ch;
+  font-size: clamp(1.85rem, 4.6vw, 3.6rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.14;
+}
+
+.noteBody {
+  max-width: 68ch;
+  font-size: clamp(1.02rem, 1.45vw, 1.16rem);
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+.noteBody p {
+  white-space: pre-line;
+}
+
+.noteBody > * + * {
+  margin-top: 1.6em;
+}
+
+.noteBody h2,
+.noteBody h3 {
+  max-width: 26ch;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.noteBody h2 {
+  margin-top: 3.5em;
+  font-size: 1.3em;
+}
+
+.noteBody h3 {
+  margin-top: 2.75em;
+  font-size: 1.08em;
+}
+
+.noteBody blockquote {
+  max-width: 55ch;
+  margin-right: 0;
+  margin-left: clamp(1rem, 5vw, 3.5rem);
+  color: var(--onceegg-blue);
+  white-space: pre-line;
+}
+
+.noteBody ul {
+  padding-left: 1.2em;
+}
+
+.noteBody li + li {
+  margin-top: 0.5em;
+}
+
+.noteBody hr {
+  width: 3rem;
+  margin-right: auto;
+  margin-left: 0;
+  border: 0;
+  border-top: 1px solid var(--onceegg-orange);
+}
+
+.notePageFooter {
+  margin-top: clamp(9rem, 20svh, 14rem);
+  margin-left: clamp(0rem, 13vw, 11rem);
+}
+
+.notePageFooter a {
+  text-decoration: underline;
+  text-decoration-color: var(--onceegg-line);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -210,14 +622,6 @@ p {
 
   .hatchingContent:hover h2 {
     color: var(--onceegg-blue);
-  }
-
-  .wordmark:hover .wordmarkGFirst {
-    transform: translateY(-0.1em);
-  }
-
-  .wordmark:hover .wordmarkGSecond {
-    transform: translate(0.035em, 0.1em);
   }
 
   .incubatorWord:hover {
@@ -233,16 +637,39 @@ p {
   .incubatorWord[data-word="artworks"]:hover {
     color: var(--onceegg-orange-ink);
   }
+
+  .noteSlipLink:hover {
+    background: #edf3f6;
+  }
+
+  .noteSlip[data-note-position="1"] .noteSlipLink:hover {
+    background: #f1f1eb;
+  }
+
+  .noteSlip[data-note-position="2"] .noteSlipLink:hover {
+    background: #f8efe8;
+  }
+
+  .noteSlip[data-note-position="3"] .noteSlipLink:hover {
+    background: var(--onceegg-note-neutral);
+  }
+
+  .allNotesLink:hover,
+  .notePageFooter a:hover {
+    color: var(--onceegg-ink);
+    text-decoration-color: currentColor;
+  }
 }
 
 @media (max-width: 720px) {
-  .page {
+  .page,
+  .journalPage {
     padding-inline: 1.5rem;
   }
 
   .wordmark {
     margin-left: 0;
-    font-size: clamp(2.05rem, 10vw, 2.7rem);
+    font-size: clamp(1.9rem, 5vw, 2.35rem);
   }
 
   .incubator {
@@ -254,10 +681,6 @@ p {
     margin-top: clamp(2rem, 5svh, 3.5rem);
   }
 
-  .incubatorWord {
-    font-size: clamp(1rem, 4.8vw, 1.2rem);
-  }
-
   .hatchingContent {
     margin-left: clamp(1rem, 9vw, 2.5rem);
   }
@@ -266,26 +689,71 @@ p {
     margin-bottom: clamp(7rem, 17svh, 9rem);
   }
 
+  .notesArchiveGrid {
+    grid-template-columns: 1fr;
+    row-gap: 1.5rem;
+  }
+
+  .noteSlip,
+  .noteSlip[data-note-position="1"],
+  .noteSlip[data-note-position="2"],
+  .noteSlip[data-note-position="3"] {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .noteSlip:nth-child(odd) {
+    margin-right: clamp(1rem, 8vw, 3rem);
+  }
+
+  .noteSlip:nth-child(even) {
+    margin-left: clamp(1rem, 8vw, 3rem);
+  }
+
+  .noteSlipLink {
+    min-height: 11rem;
+  }
+
   .closingNote {
     margin-left: clamp(1rem, 9vw, 2.5rem);
+  }
+
+  .journalHeader {
+    min-height: clamp(17rem, 42svh, 24rem);
+  }
+
+  .journalIntroduction {
+    margin-left: clamp(1rem, 9vw, 2.5rem);
+  }
+
+  .notePageHeader {
+    min-height: clamp(11rem, 28svh, 16rem);
+  }
+
+  .noteArticle {
+    margin-left: 0;
+  }
+
+  .noteArticleHeader h1 {
+    max-width: 18ch;
+  }
+
+  .noteBody {
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  .notePageFooter {
+    margin-left: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hatchingContent h2 {
+  .hatchingContent h2,
+  .noteSlipLink,
+  .allNotesLink,
+  .notePageFooter a {
     transition: none;
-  }
-
-  .wordmarkG {
-    transition: none;
-  }
-
-  .wordmark:hover .wordmarkGFirst {
-    transform: translateY(-0.04em);
-  }
-
-  .wordmark:hover .wordmarkGSecond {
-    transform: translateY(0.06em);
   }
 
   .incubatorWord,

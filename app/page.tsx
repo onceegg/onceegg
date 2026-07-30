@@ -1,10 +1,17 @@
+import { getAllNotes } from "@/lib/notes";
+
 import { Incubator } from "./incubator";
 
 export default function Home() {
+  const notes = getAllNotes();
+  const constellationNotes = notes
+    .slice(0, 12)
+    .map(({ slug, title, date }) => ({ slug, title, date }));
+
   return (
     <main className="page">
       <section className="section sectionIntro" aria-labelledby="site-title">
-        <Incubator />
+        <Incubator notes={constellationNotes} />
       </section>
 
       <section className="section sectionHatching" aria-labelledby="hatching-title">
