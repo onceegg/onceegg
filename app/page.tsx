@@ -1,6 +1,7 @@
 import { getAllNotes } from "@/lib/notes";
 
 import { Incubator } from "./incubator";
+import { HatchingMessage } from "./hatching-message";
 
 export default function Home() {
   const notes = getAllNotes();
@@ -15,9 +16,7 @@ export default function Home() {
       </section>
 
       <section className="section sectionHatching" aria-labelledby="hatching-title">
-        <div className="hatchingContent">
-          <h2 id="hatching-title">Still hatching.</h2>
-        </div>
+        <HatchingMessage />
       </section>
 
       <section className="section sectionClosing">

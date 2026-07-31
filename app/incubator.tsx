@@ -156,6 +156,7 @@ export function Incubator({ notes }: IncubatorProps) {
   );
   const [activeWord, setActiveWord] = useState<WordId | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [eggHatchCycle, setEggHatchCycle] = useState(0);
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const layoutIndexRef = useRef(0);
@@ -372,30 +373,44 @@ export function Incubator({ notes }: IncubatorProps) {
 
   return (
     <div className="incubator">
-      <h1 className="wordmark" id="site-title">
-        OnceEgg
-        <svg className="wordmarkEgg" viewBox="0 0 100 130" aria-hidden="true">
-          <path
-            className="wordmarkEggBody"
-            d="M50 2 C74 2 96 46 96 82 C96 111 75 128 50 128 C25 128 4 111 4 82 C4 46 26 2 50 2 Z"
-          />
-          <path
-            className="wordmarkEggCrack wordmarkEggCrack1"
-            pathLength={1}
-            d="M38 26 L49 42"
-          />
-          <path
-            className="wordmarkEggCrack wordmarkEggCrack2"
-            pathLength={1}
-            d="M49 42 L41 56"
-          />
-          <path
-            className="wordmarkEggCrack wordmarkEggCrack3"
-            pathLength={1}
-            d="M41 56 L55 72"
-          />
-        </svg>
-      </h1>
+      <div className="wordmark">
+        <h1 className="wordmarkTitle" id="site-title">
+          OnceEgg
+        </h1>
+        <button
+          className={`wordmarkEggButton${eggHatchCycle > 0 ? " isHatched" : ""}`}
+          type="button"
+          aria-label="Hatch the OnceEgg egg"
+          onClick={() => setEggHatchCycle((cycle) => cycle + 1)}
+        >
+          <svg
+            className="wordmarkEgg"
+            key={eggHatchCycle}
+            viewBox="0 0 100 130"
+            aria-hidden="true"
+          >
+            <path
+              className="wordmarkEggBody"
+              d="M50 2 C74 2 96 46 96 82 C96 111 75 128 50 128 C25 128 4 111 4 82 C4 46 26 2 50 2 Z"
+            />
+            <path
+              className="wordmarkEggCrack wordmarkEggCrack1"
+              pathLength={1}
+              d="M38 26 L49 42"
+            />
+            <path
+              className="wordmarkEggCrack wordmarkEggCrack2"
+              pathLength={1}
+              d="M49 42 L41 56"
+            />
+            <path
+              className="wordmarkEggCrack wordmarkEggCrack3"
+              pathLength={1}
+              d="M41 56 L55 72"
+            />
+          </svg>
+        </button>
+      </div>
 
       <div
         className="incubatorField"
