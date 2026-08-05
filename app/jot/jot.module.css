@@ -1,0 +1,270 @@
+.jotPage {
+  --jot-canvas: #f2efe7;
+  --jot-quiet-ink: #746f66;
+  --jot-error: #8b2f27;
+  --jot-top-padding: max(1.25rem, calc(env(safe-area-inset-top) + 1.25rem));
+  --jot-bottom-padding: max(0.875rem, calc(env(safe-area-inset-bottom) + 0.875rem));
+  --jot-gap: clamp(0.4375rem, 1.15svh, 0.625rem);
+  --jot-note-height: clamp(3.5rem, calc((100svh - 7.75rem) / 9), 4rem);
+
+  position: relative;
+  min-height: 100svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  background-color: var(--jot-canvas);
+  background-image:
+    linear-gradient(rgb(247 243 234 / 8%), rgb(247 243 234 / 8%)),
+    url("/jot/textures/canvas-light.png");
+  background-position: center;
+  background-repeat: repeat;
+  background-size: auto, 78rem 78rem;
+  color-scheme: light;
+  font-family: var(--onceegg-font-label), "PingFang SC", "Hiragino Sans GB", monospace;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+
+.jotPage::-webkit-scrollbar {
+  display: none;
+}
+
+.notes {
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  gap: var(--jot-gap);
+  padding-top: var(--jot-top-padding);
+  padding-bottom: var(--jot-bottom-padding);
+}
+
+.noteSlot {
+  display: flex;
+  width: 100%;
+  height: var(--jot-note-height);
+  flex: 0 0 var(--jot-note-height);
+  align-items: stretch;
+  justify-content: center;
+}
+
+.tape {
+  width: var(--jot-tape-width);
+  height: 100%;
+  cursor: default;
+  filter:
+    drop-shadow(0.375rem 0.5625rem 0.45rem rgb(63 48 37 / 11%))
+    drop-shadow(0.15625rem 0.21875rem 0.2rem rgb(63 48 37 / 17%));
+  outline: none;
+  transform:
+    translateX(calc(var(--jot-tape-offset) + var(--jot-swipe-x)))
+    rotate(var(--jot-tape-tilt));
+  transform-origin: center;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    filter 150ms ease-out,
+    opacity 150ms ease-out,
+    transform 210ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tape:focus-visible {
+  filter:
+    drop-shadow(0.375rem 0.5625rem 0.45rem rgb(63 48 37 / 13%))
+    drop-shadow(0.15625rem 0.21875rem 0.2rem rgb(63 48 37 / 21%));
+}
+
+.tape.isDragging {
+  transition: none;
+  will-change: transform;
+}
+
+.tape.isRemoving {
+  opacity: 0;
+  transform:
+    translateX(calc(var(--jot-tape-offset) + var(--jot-swipe-x)))
+    rotate(-8.5deg)
+    scale(0.94, 0.72);
+  transition:
+    opacity 132ms ease-out 48ms,
+    transform 190ms cubic-bezier(0.55, 0, 1, 0.45);
+}
+
+.paper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--jot-paper-color);
+  clip-path: var(--jot-paper-shape);
+}
+
+.paperTexture,
+.paperGrain,
+.completionShade {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+.paperTexture {
+  background-image: url("/jot/textures/tape-watercolor.png");
+  background-position: var(--jot-paper-x) var(--jot-paper-y);
+  background-repeat: repeat;
+  background-size: 26.875rem 26.875rem;
+  mix-blend-mode: multiply;
+  opacity: 0.94;
+}
+
+.paperGrain {
+  background-image: url("/jot/textures/tape-grain.png");
+  background-position: var(--jot-paper-x) var(--jot-paper-y);
+  background-repeat: repeat;
+  background-size: 26.875rem 26.875rem;
+  opacity: 0.04;
+}
+
+.completionShade {
+  z-index: 1;
+  background: #000;
+  opacity: 0.12;
+}
+
+.noteText,
+.noteInput {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 1.8125rem;
+  bottom: 0;
+  left: 1.8125rem;
+  display: flex;
+  width: calc(100% - 3.625rem);
+  height: 100%;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--jot-ink-color);
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 400;
+  letter-spacing: 0.0125rem;
+  line-height: 1.4375rem;
+  opacity: 0.96;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.noteText {
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.noteInput {
+  appearance: none;
+  border-radius: 0;
+  outline: none;
+  user-select: text;
+}
+
+.isCompleted .noteText,
+.isCompleted .noteInput {
+  justify-content: flex-end;
+  opacity: 1;
+  text-align: right;
+}
+
+.isNew .paper {
+  animation: jotPlaceTape 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.emptyState {
+  display: flex;
+  min-height: calc(100svh - var(--jot-top-padding) - var(--jot-bottom-padding));
+  align-items: center;
+  justify-content: center;
+  padding-inline: 2.25rem;
+  color: var(--jot-quiet-ink);
+  font-size: 0.9375rem;
+  letter-spacing: 0.021875rem;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.footerSpace {
+  min-height: 5.4rem;
+  flex: 0 0 5.4rem;
+  pointer-events: none;
+}
+
+.storageError {
+  position: fixed;
+  z-index: 4;
+  right: 1.75rem;
+  bottom: max(1.375rem, calc(env(safe-area-inset-bottom) + 1.375rem));
+  left: 1.75rem;
+  color: var(--jot-error);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: center;
+  pointer-events: none;
+}
+
+@keyframes jotPlaceTape {
+  from {
+    opacity: 0;
+    transform: translateY(0.8rem) rotate(-0.25deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tape:not(.isDragging, .isRemoving):hover {
+    filter:
+      drop-shadow(0.42rem 0.62rem 0.48rem rgb(63 48 37 / 13%))
+      drop-shadow(0.17rem 0.24rem 0.21rem rgb(63 48 37 / 20%));
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .jotPage {
+    --jot-canvas: #121212;
+    --jot-quiet-ink: #8f8a82;
+    --jot-error: #ffaaa0;
+
+    background-image:
+      linear-gradient(rgb(8 8 8 / 16%), rgb(8 8 8 / 16%)),
+      url("/jot/textures/canvas-dark.png");
+    color-scheme: dark;
+  }
+
+  .tape,
+  .tape:focus-visible {
+    filter:
+      drop-shadow(0.375rem 0.5625rem 0.52rem rgb(0 0 0 / 28%))
+      drop-shadow(0.15625rem 0.21875rem 0.24rem rgb(0 0 0 / 46%));
+  }
+}
+
+@media (max-width: 420px) {
+  .jotPage {
+    --jot-note-height: clamp(3.5rem, calc((100svh - 7rem) / 9), 4rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tape,
+  .tape.isRemoving {
+    transition: none;
+  }
+
+  .isNew .paper {
+    animation: none;
+  }
+}

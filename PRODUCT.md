@@ -26,7 +26,8 @@ become finished projects to deserve a place.
 
 Entries are written as files in the repository, reviewed locally, and published
 with the website. The public site is for reading; authoring does not require an
-in-browser editor.
+in-browser editor. Jot is a separate private scratchpad at `/jot`: its notes are
+stored only in the visitor's browser and are never published with the site.
 
 ## Capabilities and Constraints
 
@@ -35,6 +36,8 @@ in-browser editor.
 - The site remains deployable to Vercel without a database, authentication, or a
   custom build configuration.
 - The existing interactive homepage remains part of the experience.
+- Jot has no account or cross-device sync; it persists notes with versioned
+  `localStorage` on the current browser and device.
 
 ## Brand Commitments
 
@@ -46,6 +49,7 @@ in-browser editor.
 ## Evidence on Hand
 
 - Existing homepage implementation in `app/`.
+- Browser-local Jot implementation in `app/jot/`.
 - Existing design principles in `DESIGN.md`.
 - No personal diary archive or visual assets have been supplied yet.
 

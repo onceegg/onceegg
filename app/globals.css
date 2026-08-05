@@ -369,6 +369,24 @@ p {
   );
 }
 
+.incubatorWord[data-word="jot"] {
+  --tape-surface: var(--onceegg-tape-paper);
+  --tape-tilt: -0.28deg;
+  --tape-position: 14% 74%;
+  --tape-clip: polygon(
+    2.8% 1%,
+    97.5% 0,
+    100% 27%,
+    98.1% 53%,
+    99.4% 79%,
+    96.7% 100%,
+    1.8% 98%,
+    0 72%,
+    1.4% 45%,
+    0.4% 18%
+  );
+}
+
 .incubatorWord[data-word="ideas"]:focus-visible,
 .incubatorWord[data-word="products"]:focus-visible,
 .incubatorWord[data-word="ideas"].isActive,
@@ -378,8 +396,10 @@ p {
 
 .incubatorWord[data-word="experiments"]:focus-visible,
 .incubatorWord[data-word="artworks"]:focus-visible,
+.incubatorWord[data-word="jot"]:focus-visible,
 .incubatorWord[data-word="experiments"].isActive,
-.incubatorWord[data-word="artworks"].isActive {
+.incubatorWord[data-word="artworks"].isActive,
+.incubatorWord[data-word="jot"].isActive {
   color: var(--onceegg-orange-ink);
 }
 
@@ -838,7 +858,8 @@ p {
   }
 
   .incubatorWord[data-word="experiments"]:hover,
-  .incubatorWord[data-word="artworks"]:hover {
+  .incubatorWord[data-word="artworks"]:hover,
+  .incubatorWord[data-word="jot"]:hover {
     color: var(--onceegg-orange-ink);
   }
 

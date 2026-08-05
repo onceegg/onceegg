@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useRef,
   useState,
@@ -9,7 +10,7 @@ import {
   type PointerEvent,
 } from "react";
 
-type WordId = "ideas" | "products" | "experiments" | "artworks" | "notes";
+type WordId = "ideas" | "products" | "experiments" | "artworks" | "notes" | "jot";
 
 type Point = {
   x: number;
@@ -50,6 +51,7 @@ const WORDS: Array<{ id: WordId; label: string }> = [
   { id: "experiments", label: "experiments," },
   { id: "artworks", label: "artworks," },
   { id: "notes", label: "and notes" },
+  { id: "jot", label: "jot," },
 ];
 
 const LAYOUTS: Positions[] = [
@@ -59,6 +61,7 @@ const LAYOUTS: Positions[] = [
     experiments: { x: 0.27, y: 0.65 },
     artworks: { x: 0.72, y: 0.78 },
     notes: { x: 0.52, y: 0.45 },
+    jot: { x: 0.48, y: 0.84 },
   },
   {
     ideas: { x: 0.64, y: 0.16 },
@@ -66,6 +69,7 @@ const LAYOUTS: Positions[] = [
     experiments: { x: 0.68, y: 0.6 },
     artworks: { x: 0.34, y: 0.82 },
     notes: { x: 0.79, y: 0.84 },
+    jot: { x: 0.48, y: 0.46 },
   },
   {
     ideas: { x: 0.2, y: 0.76 },
@@ -73,6 +77,7 @@ const LAYOUTS: Positions[] = [
     experiments: { x: 0.52, y: 0.22 },
     artworks: { x: 0.32, y: 0.46 },
     notes: { x: 0.78, y: 0.42 },
+    jot: { x: 0.52, y: 0.86 },
   },
 ];
 
@@ -104,6 +109,7 @@ const HORIZONTAL_LIMITS: Record<WordId, HorizontalLimits> = {
   experiments: { minimum: 0.1, maximum: 0.8 },
   artworks: { minimum: 0.12, maximum: 0.78 },
   notes: { minimum: 0.16, maximum: 0.84 },
+  jot: { minimum: 0.1, maximum: 0.9 },
 };
 
 function copyLayout(layout: Positions): Positions {
@@ -113,6 +119,7 @@ function copyLayout(layout: Positions): Positions {
     experiments: { ...layout.experiments },
     artworks: { ...layout.artworks },
     notes: { ...layout.notes },
+    jot: { ...layout.jot },
   };
 }
 
@@ -151,6 +158,7 @@ function formatNodeDate(date: string) {
 }
 
 export function Incubator({ notes }: IncubatorProps) {
+  const router = useRouter();
   const [positions, setPositions] = useState<Positions>(() =>
     copyLayout(LAYOUTS[0]),
   );
@@ -216,6 +224,10 @@ export function Incubator({ notes }: IncubatorProps) {
           x: current.notes.x + (anchor.x - current.notes.x) * 0.1,
           y: current.notes.y + (anchor.y - current.notes.y) * 0.1,
         }),
+        jot: constrainPoint("jot", {
+          x: current.jot.x + (anchor.x - current.jot.x) * 0.1,
+          y: current.jot.y + (anchor.y - current.jot.y) * 0.1,
+        }),
       };
     });
   }
@@ -223,6 +235,11 @@ export function Incubator({ notes }: IncubatorProps) {
   function activateWord(id: WordId) {
     if (id === "notes") {
       setNotesOpen((current) => !current);
+      return;
+    }
+
+    if (id === "jot") {
+      router.push("/jot");
       return;
     }
 
@@ -416,11 +433,12 @@ export function Incubator({ notes }: IncubatorProps) {
         className="incubatorField"
         ref={fieldRef}
         role="group"
-        aria-label="Ideas, products, experiments, artworks, and notes."
+        aria-label="Ideas, products, experiments, artworks, notes, and Jot."
       >
         <p className="visuallyHidden" id="incubator-instructions">
           Drag the words, or use the arrow keys to rearrange them. Activate a
-          word to see how it behaves. Notes reveals recent diary entries.
+          word to see how it behaves. Notes reveals recent diary entries. Jot
+          opens a private local note wall.
         </p>
 
         <div
