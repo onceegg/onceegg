@@ -21,6 +21,7 @@ const courierPrime = Courier_Prime({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.onceegg.com"),
   title: "OnceEgg",
   description: "A place for ideas, products, experiments, and artworks.",
 };

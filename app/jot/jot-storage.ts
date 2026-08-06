@@ -7,8 +7,19 @@ import {
 } from "./jot-types";
 
 const STORAGE_KEY = "onceegg:jot:v1";
+const PREFERENCES_KEY = "onceegg:jot:preferences:v1";
 const STORAGE_VERSION = 1;
 const colorSet = new Set<string>(JOT_COLORS);
+
+export type JotPreferences = {
+  deviceNoticeSeen: boolean;
+  gestureHintSeen: boolean;
+};
+
+export const DEFAULT_JOT_PREFERENCES: JotPreferences = {
+  deviceNoticeSeen: false,
+  gestureHintSeen: false,
+};
 
 type StoredJot = {
   version: number;
@@ -77,4 +88,19 @@ export function saveJotState(state: JotState) {
       nextColorIndex: state.nextColorIndex,
     }),
   );
+}
+
+export function loadJotPreferences(): JotPreferences {
+  const storedValue = window.localStorage.getItem(PREFERENCES_KEY);
+  if (!storedValue) return { ...DEFAULT_JOT_PREFERENCES };
+
+  const parsed = JSON.parse(storedValue) as Partial<JotPreferences>;
+  return {
+    deviceNoticeSeen: parsed.deviceNoticeSeen === true,
+    gestureHintSeen: parsed.gestureHintSeen === true,
+  };
+}
+
+export function saveJotPreferences(preferences: JotPreferences) {
+  window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
 }
