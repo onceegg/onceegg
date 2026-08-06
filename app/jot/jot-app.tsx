@@ -27,6 +27,7 @@ const CANVAS_DOUBLE_TAP_MS = 280;
 const NOTE_DOUBLE_TAP_MS = 235;
 const REMOVE_DISTANCE = 72;
 const FONT_SIZE = 18;
+const FONT_TRACKING_EM = 0.04;
 
 type Point = [number, number];
 
@@ -51,6 +52,7 @@ type TapeProperties = CSSProperties & {
   "--jot-paper-color": string;
   "--jot-ink-color": string;
   "--jot-tape-width": string;
+  "--jot-text-inset": string;
   "--jot-paper-shape": string;
   "--jot-paper-x": string;
   "--jot-paper-y": string;
@@ -202,9 +204,18 @@ function TapeNote({
   onInteractionStart,
 }: TapeNoteProps) {
   const seed = useMemo(() => hashString(note.id), [note.id]);
-  const widthRatio = 0.838 + ((seed >>> 4) % 27) / 1000;
+  const naturalWidthRatio = 0.838 + ((seed >>> 4) % 27) / 1000;
+  const widthRatio =
+    naturalWidthRatio * (viewportWidth > 720 ? 5 / 6 : 1);
   const tapeWidth = viewportWidth * widthRatio;
-  const maxTextUnits = Math.max(4, Math.floor((tapeWidth - 58) / (FONT_SIZE * 0.98)));
+  const textInset = clamp(tapeWidth * 0.06, 32, 64);
+  const maxTextUnits = Math.max(
+    4,
+    Math.floor(
+      (tapeWidth - textInset * 2) /
+        (FONT_SIZE * (1 + FONT_TRACKING_EM)),
+    ),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const pointerRef = useRef<NotePointer | null>(null);
   const tapTimerRef = useRef<number | null>(null);
@@ -340,6 +351,7 @@ function TapeNote({
     "--jot-paper-color": palette.surface,
     "--jot-ink-color": note.isCompleted ? "#625E59" : palette.ink,
     "--jot-tape-width": `${(widthRatio * 100).toFixed(2)}vw`,
+    "--jot-text-inset": `${textInset.toFixed(1)}px`,
     "--jot-paper-shape": `polygon(${makeTornPolygon(seed)})`,
     "--jot-paper-x": `${-((seed >>> 5) % 58)}px`,
     "--jot-paper-y": `${-((seed >>> 13) % 12)}px`,

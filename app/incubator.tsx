@@ -61,7 +61,7 @@ const LAYOUTS: Positions[] = [
     experiments: { x: 0.27, y: 0.65 },
     artworks: { x: 0.72, y: 0.78 },
     notes: { x: 0.52, y: 0.45 },
-    jot: { x: 0.48, y: 0.84 },
+    jot: { x: 0.34, y: 0.88 },
   },
   {
     ideas: { x: 0.64, y: 0.16 },
