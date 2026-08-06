@@ -11,6 +11,9 @@
   --jot-shadow-hover:
     drop-shadow(0.42rem 0.62rem 0.48rem rgb(63 48 37 / 13%))
     drop-shadow(0.17rem 0.24rem 0.21rem rgb(63 48 37 / 20%));
+  --jot-shadow-completed:
+    drop-shadow(0.3rem 0.45rem 0.4rem rgb(63 48 37 / 8%))
+    drop-shadow(0.125rem 0.18rem 0.18rem rgb(63 48 37 / 12%));
   --jot-top-padding: max(1.25rem, calc(env(safe-area-inset-top) + 1.25rem));
   --jot-bottom-padding: max(0.875rem, calc(env(safe-area-inset-bottom) + 0.875rem));
   --jot-gap: clamp(0.4375rem, 1.15svh, 0.625rem);
@@ -80,6 +83,10 @@
   filter: var(--jot-shadow-focus);
 }
 
+.tape.isCompleted:not(:focus-visible, .isDragging, .isRemoving) {
+  filter: var(--jot-shadow-completed);
+}
+
 .tape.isDragging {
   transition: none;
   will-change: transform;
@@ -106,8 +113,7 @@
 }
 
 .paperTexture,
-.paperGrain,
-.completionShade {
+.paperGrain {
   position: absolute;
   z-index: 0;
   inset: 0;
@@ -129,12 +135,6 @@
   background-repeat: repeat;
   background-size: 26.875rem 26.875rem;
   opacity: 0.04;
-}
-
-.completionShade {
-  z-index: 1;
-  background: #000;
-  opacity: 0.12;
 }
 
 .noteText,
@@ -177,9 +177,7 @@
 
 .isCompleted .noteText,
 .isCompleted .noteInput {
-  justify-content: flex-end;
   opacity: 1;
-  text-align: right;
 }
 
 .isNew .paper {
@@ -250,6 +248,9 @@
     --jot-shadow-hover:
       drop-shadow(0.42rem 0.62rem 0.56rem rgb(0 0 0 / 32%))
       drop-shadow(0.17rem 0.24rem 0.26rem rgb(0 0 0 / 50%));
+    --jot-shadow-completed:
+      drop-shadow(0.3rem 0.45rem 0.46rem rgb(0 0 0 / 22%))
+      drop-shadow(0.125rem 0.18rem 0.21rem rgb(0 0 0 / 36%));
 
     background-image:
       linear-gradient(rgb(8 8 8 / 16%), rgb(8 8 8 / 16%)),
@@ -272,6 +273,9 @@
     --jot-shadow-hover:
       drop-shadow(0.42rem 0.62rem 0.48rem rgb(63 48 37 / 13%))
       drop-shadow(0.17rem 0.24rem 0.21rem rgb(63 48 37 / 20%));
+    --jot-shadow-completed:
+      drop-shadow(0.3rem 0.45rem 0.4rem rgb(63 48 37 / 8%))
+      drop-shadow(0.125rem 0.18rem 0.18rem rgb(63 48 37 / 12%));
 
     background-image:
       linear-gradient(rgb(247 243 234 / 8%), rgb(247 243 234 / 8%)),

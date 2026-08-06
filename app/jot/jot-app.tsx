@@ -26,6 +26,8 @@ import {
 const CANVAS_DOUBLE_TAP_MS = 280;
 const NOTE_DOUBLE_TAP_MS = 235;
 const REMOVE_DISTANCE = 72;
+const REMOVE_VELOCITY = -0.45;
+const VELOCITY_SAMPLE_MAX_AGE = 80;
 const FONT_SIZE = 18;
 const FONT_TRACKING_EM = 0.04;
 
@@ -44,6 +46,7 @@ type NotePointer = {
   startY: number;
   lastX: number;
   lastAt: number;
+  velocityX: number;
   moved: boolean;
   swiping: boolean;
 };
@@ -226,6 +229,17 @@ function TapeNote({
   const [isDragging, setIsDragging] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
+  const resetSwipe = useCallback(() => {
+    pointerRef.current = null;
+    setIsDragging(false);
+    setTranslationX(0);
+  }, []);
+
+  const resetInterruptedSwipe = useCallback(() => {
+    if (pointerRef.current === null) return;
+    resetSwipe();
+  }, [resetSwipe]);
+
   useEffect(() => {
     if (!isEditing) return;
     const frame = window.requestAnimationFrame(() => {
@@ -245,6 +259,19 @@ function TapeNote({
     [],
   );
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") resetInterruptedSwipe();
+    };
+
+    window.addEventListener("blur", resetInterruptedSwipe);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", resetInterruptedSwipe);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [resetInterruptedSwipe]);
+
   function handleTextChange(event: ChangeEvent<HTMLInputElement>) {
     const nextValue = event.currentTarget.value;
     onChange(isComposingRef.current ? nextValue.replace(/[\r\n]/g, "") : fitText(nextValue, maxTextUnits));
@@ -256,8 +283,19 @@ function TapeNote({
   }
 
   function beginPointer(event: PointerEvent<HTMLDivElement>) {
-    if (isEditing || event.button !== 0) return;
+    if (isEditing || isRemoving || event.button !== 0) return;
     event.stopPropagation();
+
+    const stalePointer = pointerRef.current;
+    if (stalePointer && event.currentTarget.hasPointerCapture(stalePointer.pointerId)) {
+      event.currentTarget.releasePointerCapture(stalePointer.pointerId);
+    }
+    resetSwipe();
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
     onInteractionStart();
     pointerRef.current = {
@@ -266,6 +304,7 @@ function TapeNote({
       startY: event.clientY,
       lastX: event.clientX,
       lastAt: performance.now(),
+      velocityX: 0,
       moved: false,
       swiping: false,
     };
@@ -279,39 +318,41 @@ function TapeNote({
 
     const deltaX = event.clientX - pointer.startX;
     const deltaY = event.clientY - pointer.startY;
+    const now = performance.now();
+    const sampleElapsed = Math.max(1, now - pointer.lastAt);
+    const sampleVelocityX = (event.clientX - pointer.lastX) / sampleElapsed;
     if (Math.hypot(deltaX, deltaY) > 7) pointer.moved = true;
     if (!pointer.swiping && deltaX < -10 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
       pointer.swiping = true;
     }
+    pointer.velocityX = pointer.velocityX * 0.3 + sampleVelocityX * 0.7;
     pointer.lastX = event.clientX;
-    pointer.lastAt = performance.now();
+    pointer.lastAt = now;
 
     if (pointer.swiping) setTranslationX(Math.min(0, deltaX));
   }
 
   function cancelPointer(event: PointerEvent<HTMLDivElement>) {
     if (pointerRef.current?.pointerId !== event.pointerId) return;
-    pointerRef.current = null;
-    setIsDragging(false);
-    setTranslationX(0);
+    resetSwipe();
   }
 
   function finishPointer(event: PointerEvent<HTMLDivElement>) {
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
     event.stopPropagation();
+
+    pointerRef.current = null;
+    setIsDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    pointerRef.current = null;
-    setIsDragging(false);
-
     const deltaX = event.clientX - pointer.startX;
-    const elapsed = Math.max(1, performance.now() - pointer.lastAt);
-    const velocityX = (event.clientX - pointer.lastX) / elapsed;
+    const sampleAge = performance.now() - pointer.lastAt;
+    const velocityX = sampleAge <= VELOCITY_SAMPLE_MAX_AGE ? pointer.velocityX : 0;
     if (pointer.swiping) {
-      if (deltaX < -REMOVE_DISTANCE || velocityX < -0.55) {
+      if (deltaX < -REMOVE_DISTANCE || velocityX < REMOVE_VELOCITY) {
         setIsRemoving(true);
         setTranslationX(-Math.max(viewportWidth * 1.2, 460));
         removeTimerRef.current = window.setTimeout(onRemove, 190);
@@ -348,8 +389,8 @@ function TapeNote({
 
   const palette = JOT_PALETTE[note.color];
   const tapeStyle: TapeProperties = {
-    "--jot-paper-color": palette.surface,
-    "--jot-ink-color": note.isCompleted ? "#625E59" : palette.ink,
+    "--jot-paper-color": note.isCompleted ? "#BDB8AF" : palette.surface,
+    "--jot-ink-color": note.isCompleted ? "#494640" : palette.ink,
     "--jot-tape-width": `${(widthRatio * 100).toFixed(2)}vw`,
     "--jot-text-inset": `${textInset.toFixed(1)}px`,
     "--jot-paper-shape": `polygon(${makeTornPolygon(seed)})`,
@@ -386,6 +427,7 @@ function TapeNote({
         }
         style={tapeStyle}
         onKeyDown={isEditing ? undefined : handleKeyboard}
+        onLostPointerCapture={cancelPointer}
         onPointerCancel={cancelPointer}
         onPointerDown={beginPointer}
         onPointerMove={movePointer}
@@ -394,7 +436,6 @@ function TapeNote({
         <div className={styles.paper}>
           <span className={styles.paperTexture} aria-hidden="true" />
           <span className={styles.paperGrain} aria-hidden="true" />
-          {note.isCompleted ? <span className={styles.completionShade} aria-hidden="true" /> : null}
 
           {isEditing ? (
             <input
