@@ -10,7 +10,14 @@ import {
   type PointerEvent,
 } from "react";
 
-type WordId = "ideas" | "products" | "experiments" | "artworks" | "notes" | "jot";
+type WordId =
+  | "ideas"
+  | "products"
+  | "experiments"
+  | "artworks"
+  | "notes"
+  | "jot"
+  | "hint";
 
 type Point = {
   x: number;
@@ -52,6 +59,7 @@ const WORDS: Array<{ id: WordId; label: string }> = [
   { id: "artworks", label: "artworks," },
   { id: "notes", label: "and notes" },
   { id: "jot", label: "jot," },
+  { id: "hint", label: "hint" },
 ];
 
 const LAYOUTS: Positions[] = [
@@ -62,6 +70,7 @@ const LAYOUTS: Positions[] = [
     artworks: { x: 0.72, y: 0.78 },
     notes: { x: 0.52, y: 0.45 },
     jot: { x: 0.34, y: 0.88 },
+    hint: { x: 0.82, y: 0.57 },
   },
   {
     ideas: { x: 0.64, y: 0.16 },
@@ -70,6 +79,7 @@ const LAYOUTS: Positions[] = [
     artworks: { x: 0.34, y: 0.82 },
     notes: { x: 0.79, y: 0.84 },
     jot: { x: 0.48, y: 0.46 },
+    hint: { x: 0.16, y: 0.64 },
   },
   {
     ideas: { x: 0.2, y: 0.76 },
@@ -78,6 +88,7 @@ const LAYOUTS: Positions[] = [
     artworks: { x: 0.32, y: 0.46 },
     notes: { x: 0.78, y: 0.42 },
     jot: { x: 0.52, y: 0.86 },
+    hint: { x: 0.85, y: 0.59 },
   },
 ];
 
@@ -110,6 +121,7 @@ const HORIZONTAL_LIMITS: Record<WordId, HorizontalLimits> = {
   artworks: { minimum: 0.12, maximum: 0.78 },
   notes: { minimum: 0.16, maximum: 0.84 },
   jot: { minimum: 0.1, maximum: 0.9 },
+  hint: { minimum: 0.09, maximum: 0.91 },
 };
 
 function copyLayout(layout: Positions): Positions {
@@ -120,6 +132,7 @@ function copyLayout(layout: Positions): Positions {
     artworks: { ...layout.artworks },
     notes: { ...layout.notes },
     jot: { ...layout.jot },
+    hint: { ...layout.hint },
   };
 }
 
@@ -228,6 +241,10 @@ export function Incubator({ notes }: IncubatorProps) {
           x: current.jot.x + (anchor.x - current.jot.x) * 0.1,
           y: current.jot.y + (anchor.y - current.jot.y) * 0.1,
         }),
+        hint: constrainPoint("hint", {
+          x: current.hint.x + (anchor.x - current.hint.x) * 0.1,
+          y: current.hint.y + (anchor.y - current.hint.y) * 0.1,
+        }),
       };
     });
   }
@@ -240,6 +257,11 @@ export function Incubator({ notes }: IncubatorProps) {
 
     if (id === "jot") {
       router.push("/jot");
+      return;
+    }
+
+    if (id === "hint") {
+      router.push("/field");
       return;
     }
 
@@ -433,12 +455,12 @@ export function Incubator({ notes }: IncubatorProps) {
         className="incubatorField"
         ref={fieldRef}
         role="group"
-        aria-label="Ideas, products, experiments, artworks, notes, and Jot."
+        aria-label="Ideas, products, experiments, artworks, notes, Jot, and Hint."
       >
         <p className="visuallyHidden" id="incubator-instructions">
           Drag the words, or use the arrow keys to rearrange them. Activate a
           word to see how it behaves. Notes reveals recent diary entries. Jot
-          opens a private local note wall.
+          opens a private local note wall. Hint opens an interactive field.
         </p>
 
         <div

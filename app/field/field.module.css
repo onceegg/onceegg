@@ -1,0 +1,230 @@
+.field {
+  --field-ivory: #f5f3ed;
+  --field-ink: #555955;
+  --field-quiet: #757873;
+  --field-focus: rgb(82 93 92 / 46%);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 68% 54% at 86% 10%, rgb(211 222 220 / 14%), transparent 72%),
+    radial-gradient(ellipse 58% 68% at 7% 96%, rgb(226 214 197 / 12%), transparent 74%),
+    var(--field-ivory);
+  color: var(--field-ink);
+  cursor: crosshair;
+  isolation: isolate;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.field::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background-image: url("/textures/watercolor-paper.jpg");
+  background-position: center top;
+  background-repeat: repeat;
+  background-size: 32rem 32rem;
+  content: "";
+  mix-blend-mode: multiply;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.field[data-stage="settling"],
+.field[data-stage="revealed"] {
+  cursor: default;
+}
+
+.field[data-stage="pick"] {
+  cursor: pointer;
+}
+
+.canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gestureHint {
+  position: absolute;
+  z-index: 2;
+  bottom: max(1.35rem, calc(env(safe-area-inset-bottom) + 0.7rem));
+  left: 50%;
+  color: var(--field-quiet);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  opacity: 0.28;
+  pointer-events: none;
+  text-transform: lowercase;
+  transform: translateX(-50%);
+  transition: opacity 480ms ease;
+}
+
+.field:not([data-stage="idle"]) .gestureHint {
+  opacity: 0;
+}
+
+.pickHint {
+  position: absolute;
+  z-index: 4;
+  bottom: max(1.35rem, calc(env(safe-area-inset-bottom) + 0.7rem));
+  left: 50%;
+  color: rgb(78 87 84 / 62%);
+  font-family: var(--onceegg-font-label);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.045em;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  animation: fieldPickHintIn 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fieldAction {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  pointer-events: none;
+}
+
+.fieldAction:focus-visible {
+  outline: 1px solid var(--field-focus);
+  outline-offset: -4px;
+}
+
+.answer {
+  position: absolute;
+  z-index: 4;
+  left: var(--field-answer-x);
+  top: var(--field-answer-y);
+  display: flex;
+  width: min(18rem, calc(100vw - 3rem));
+  flex-direction: column;
+  align-items: flex-start;
+  opacity: 0;
+  pointer-events: auto;
+  animation: fieldAnswerIn 760ms cubic-bezier(0.22, 1, 0.36, 1) 360ms forwards;
+}
+
+.answerRight {
+  margin-left: clamp(1rem, 3.4vw, 2.8rem);
+  max-width: calc(100vw - var(--field-answer-x) - clamp(2rem, 5vw, 4rem));
+}
+
+.answerLeft {
+  margin-left: clamp(-2.8rem, -3.4vw, -1rem);
+  max-width: calc(var(--field-answer-x) - clamp(2rem, 5vw, 4rem));
+  align-items: flex-end;
+  text-align: right;
+  transform: translateX(-100%);
+}
+
+.answerBelow {
+  margin-top: clamp(0.8rem, 2.3svh, 1.65rem);
+}
+
+.answerAbove {
+  margin-top: clamp(-1.65rem, -2.3svh, -0.8rem);
+  transform: translateY(-100%);
+}
+
+.answerLeft.answerAbove {
+  transform: translate(-100%, -100%);
+}
+
+.line {
+  color: rgb(55 63 59 / 94%);
+  font-family: var(--onceegg-font-reading);
+  font-size: clamp(1.125rem, 1.55vw, 1.3rem);
+  font-optical-sizing: auto;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+  line-height: 1.34;
+}
+
+@keyframes fieldPickHintIn {
+  from {
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+@keyframes fieldAnswerIn {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@media (max-width: 40rem) {
+  .answer {
+    width: min(15.5rem, calc(100vw - 2.5rem));
+  }
+
+  .answerRight {
+    margin-left: 1rem;
+  }
+
+  .answerLeft {
+    margin-left: -1rem;
+  }
+
+  .line {
+    font-size: 1.125rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gestureHint {
+    transition-duration: 100ms;
+  }
+
+  .answer {
+    animation-duration: 180ms;
+    animation-delay: 0ms;
+  }
+
+  .pickHint {
+    animation-duration: 180ms;
+  }
+}

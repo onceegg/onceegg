@@ -387,6 +387,24 @@ p {
   );
 }
 
+.incubatorWord[data-word="hint"] {
+  --tape-surface: var(--onceegg-tape-blue);
+  --tape-tilt: 0.24deg;
+  --tape-position: 88% 34%;
+  --tape-clip: polygon(
+    2.4% 1.5%,
+    97.8% 0,
+    99.4% 25%,
+    98.2% 52%,
+    100% 80%,
+    96.8% 100%,
+    1.6% 98.5%,
+    0 73%,
+    1.2% 46%,
+    0.5% 18%
+  );
+}
+
 .incubatorWord[data-word="ideas"]:focus-visible,
 .incubatorWord[data-word="products"]:focus-visible,
 .incubatorWord[data-word="ideas"].isActive,
@@ -397,9 +415,11 @@ p {
 .incubatorWord[data-word="experiments"]:focus-visible,
 .incubatorWord[data-word="artworks"]:focus-visible,
 .incubatorWord[data-word="jot"]:focus-visible,
+.incubatorWord[data-word="hint"]:focus-visible,
 .incubatorWord[data-word="experiments"].isActive,
 .incubatorWord[data-word="artworks"].isActive,
-.incubatorWord[data-word="jot"].isActive {
+.incubatorWord[data-word="jot"].isActive,
+.incubatorWord[data-word="hint"].isActive {
   color: var(--onceegg-orange-ink);
 }
 
@@ -859,7 +879,8 @@ p {
 
   .incubatorWord[data-word="experiments"]:hover,
   .incubatorWord[data-word="artworks"]:hover,
-  .incubatorWord[data-word="jot"]:hover {
+  .incubatorWord[data-word="jot"]:hover,
+  .incubatorWord[data-word="hint"]:hover {
     color: var(--onceegg-orange-ink);
   }
 
