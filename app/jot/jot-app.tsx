@@ -207,18 +207,9 @@ function sortNotes(notes: JotNote[]) {
   });
 }
 
-function getBalancedLane(notes: JotNote[]): JotLane {
-  let leftCount = 0;
-  let rightCount = 0;
-  for (const note of notes) {
-    if (note.lane === "left") leftCount += 1;
-    else rightCount += 1;
-  }
-  return leftCount <= rightCount ? "left" : "right";
-}
-
 type TapeNoteProps = {
   note: JotNote;
+  lane: JotLane;
   viewportWidth: number;
   laneRow: number;
   isEditing: boolean;
@@ -236,6 +227,7 @@ type TapeNoteProps = {
 
 function TapeNote({
   note,
+  lane,
   viewportWidth,
   laneRow,
   isEditing,
@@ -467,7 +459,7 @@ function TapeNote({
     <div
       className={styles.noteSlot}
       data-note-id={note.id}
-      data-lane={note.lane}
+      data-lane={lane}
       data-completed={note.isCompleted || undefined}
       style={{ "--jot-note-row": String(laneRow) } as NoteSlotProperties}
     >
@@ -557,7 +549,6 @@ export function JotApp() {
   const announcementSequenceRef = useRef(0);
   const canvasPointerRef = useRef<CanvasPointer | null>(null);
   const lastCanvasTapAtRef = useRef(0);
-  const lastCanvasTapLaneRef = useRef<JotLane | null>(null);
   const undoTimerRef = useRef<number | null>(null);
   const deviceNoticeTimerRef = useRef<number | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -684,16 +675,16 @@ export function JotApp() {
   const positionedNotes = useMemo(() => {
     const rowCounts: Record<JotLane, number> = { left: 0, right: 0 };
     return notes.map((note) => {
-      rowCounts[note.lane] += 1;
-      return { note, laneRow: rowCounts[note.lane] };
+      const lane: JotLane = note.isCompleted ? "right" : "left";
+      rowCounts[lane] += 1;
+      return { note, lane, laneRow: rowCounts[lane] };
     });
   }, [notes]);
 
-  const createNote = useCallback((requestedLane?: JotLane) => {
+  const createNote = useCallback(() => {
     const id = getNoteId();
     const now = Date.now();
     updateState((current) => {
-      const lane = requestedLane ?? getBalancedLane(current.notes);
       return {
         notes: [
           ...current.notes,
@@ -701,7 +692,6 @@ export function JotApp() {
             id,
             text: "",
             color: JOT_COLORS[current.nextColorIndex % JOT_COLORS.length],
-            lane,
             isCompleted: false,
             completedAt: null,
             createdAt: now,
@@ -899,22 +889,11 @@ export function JotApp() {
     dismissGestureHint();
     setEditingId(null);
     const now = Date.now();
-    const lane =
-      viewportWidth >= TWO_COLUMN_BREAKPOINT
-        ? pointer.x < viewportWidth / 2
-          ? "left"
-          : "right"
-        : null;
-    if (
-      now - lastCanvasTapAtRef.current <= CANVAS_DOUBLE_TAP_MS &&
-      lastCanvasTapLaneRef.current === lane
-    ) {
+    if (now - lastCanvasTapAtRef.current <= CANVAS_DOUBLE_TAP_MS) {
       lastCanvasTapAtRef.current = 0;
-      lastCanvasTapLaneRef.current = null;
-      createNote(lane ?? undefined);
+      createNote();
     } else {
       lastCanvasTapAtRef.current = now;
-      lastCanvasTapLaneRef.current = lane;
     }
   }
 
@@ -934,7 +913,6 @@ export function JotApp() {
       onPointerUp={handleCanvasPointerUp}
       onScroll={() => {
         lastCanvasTapAtRef.current = 0;
-        lastCanvasTapLaneRef.current = null;
         if (canvasPointerRef.current) canvasPointerRef.current.moved = true;
       }}
     >
@@ -943,7 +921,7 @@ export function JotApp() {
         aria-hidden="true"
         dangerouslySetInnerHTML={{
           __html:
-            "<!-- THESIS: The note is the control; no toolbar, account, or editor route. OWN-WORLD: OnceEgg watercolor canvas, 23 torn pigment tapes, quiet typewriter ink, down-right shadow. STORY: Double-tap blank space to write, tap to edit, double-tap to complete, swipe left to tear away. FIRST VIEWPORT: A single tactile stack on narrow screens becomes two invisible centered lanes on wide screens; unfinished notes lead and dimmed complete notes settle below. FORM: A responsive note wall extending OnceEgg's paper constellation. -->",
+            "<!-- THESIS: The note is the control; no toolbar, account, or editor route. OWN-WORLD: OnceEgg watercolor canvas, 23 torn pigment tapes, quiet typewriter ink, down-right shadow. STORY: Double-tap blank space to write, tap to edit, double-tap to complete, swipe left to tear away. FIRST VIEWPORT: A single tactile stack on narrow screens becomes two quiet status lanes on wide screens: unfinished left, completed right. FORM: A responsive note wall extending OnceEgg's paper constellation. -->",
         }}
       />
 
@@ -983,10 +961,11 @@ export function JotApp() {
       ) : null}
 
       <div className={styles.notes}>
-        {positionedNotes.map(({ note, laneRow }) => (
+        {positionedNotes.map(({ note, lane, laneRow }) => (
           <TapeNote
             key={note.id}
             note={note}
+            lane={lane}
             viewportWidth={viewportWidth}
             laneRow={laneRow}
             isEditing={editingId === note.id}
@@ -1006,7 +985,6 @@ export function JotApp() {
             onInteractionStart={() => {
               dismissGestureHint();
               lastCanvasTapAtRef.current = 0;
-              lastCanvasTapLaneRef.current = null;
             }}
             onFocus={() => setActiveNoteId(note.id)}
             onExit={leaveJot}
