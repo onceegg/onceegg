@@ -2,13 +2,14 @@ import {
   EMPTY_JOT_STATE,
   JOT_COLORS,
   type JotColor,
+  type JotLane,
   type JotNote,
   type JotState,
 } from "./jot-types";
 
 const STORAGE_KEY = "onceegg:jot:v1";
 const PREFERENCES_KEY = "onceegg:jot:preferences:v1";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const colorSet = new Set<string>(JOT_COLORS);
 
 export type JotPreferences = {
@@ -31,7 +32,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function normalizeNote(value: unknown): JotNote | null {
+function normalizeNote(value: unknown, fallbackIndex: number): JotNote | null {
   if (!value || typeof value !== "object") return null;
 
   const note = value as Partial<JotNote>;
@@ -53,6 +54,12 @@ function normalizeNote(value: unknown): JotNote | null {
     id: note.id,
     text: note.text.replace(/[\r\n]/g, ""),
     color: note.color as JotColor,
+    lane:
+      note.lane === "left" || note.lane === "right"
+        ? (note.lane as JotLane)
+        : fallbackIndex % 2 === 0
+          ? "left"
+          : "right",
     isCompleted: note.isCompleted,
     completedAt: note.isCompleted ? completedAt : null,
     createdAt: note.createdAt,
@@ -65,13 +72,15 @@ export function loadJotState(): JotState {
   if (!storedValue) return { ...EMPTY_JOT_STATE, notes: [] };
 
   const parsed = JSON.parse(storedValue) as StoredJot;
-  if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.notes)) {
+  if (![1, STORAGE_VERSION].includes(parsed.version) || !Array.isArray(parsed.notes)) {
     throw new Error("本地便签格式无法读取");
   }
 
-  const notes = parsed.notes
-    .map(normalizeNote)
-    .filter((note): note is JotNote => note !== null);
+  const notes: JotNote[] = [];
+  parsed.notes.forEach((value) => {
+    const note = normalizeNote(value, notes.length);
+    if (note) notes.push(note);
+  });
   const nextColorIndex = isFiniteNumber(parsed.nextColorIndex)
     ? Math.max(0, Math.floor(parsed.nextColorIndex))
     : notes.length;

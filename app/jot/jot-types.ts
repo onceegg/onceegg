@@ -26,10 +26,15 @@ export const JOT_COLORS = [
 
 export type JotColor = (typeof JOT_COLORS)[number];
 
+export const JOT_LANES = ["left", "right"] as const;
+
+export type JotLane = (typeof JOT_LANES)[number];
+
 export type JotNote = {
   id: string;
   text: string;
   color: JotColor;
+  lane: JotLane;
   isCompleted: boolean;
   completedAt: number | null;
   createdAt: number;

@@ -28,6 +28,7 @@ import {
   EMPTY_JOT_STATE,
   JOT_COLORS,
   JOT_PALETTE,
+  type JotLane,
   type JotNote,
   type JotState,
 } from "./jot-types";
@@ -39,6 +40,7 @@ const REMOVE_VELOCITY = -0.45;
 const VELOCITY_SAMPLE_MAX_AGE = 80;
 const UNDO_DURATION_MS = 4200;
 const DEVICE_NOTICE_DURATION_MS = 4600;
+const TWO_COLUMN_BREAKPOINT = 1024;
 const FONT_SIZE = 18;
 const FONT_TRACKING_EM = 0.04;
 
@@ -78,6 +80,10 @@ type TapeProperties = CSSProperties & {
   "--jot-tape-offset": string;
   "--jot-tape-tilt": string;
   "--jot-swipe-x": string;
+};
+
+type NoteSlotProperties = CSSProperties & {
+  "--jot-note-row": string;
 };
 
 function hashString(value: string) {
@@ -201,9 +207,20 @@ function sortNotes(notes: JotNote[]) {
   });
 }
 
+function getBalancedLane(notes: JotNote[]): JotLane {
+  let leftCount = 0;
+  let rightCount = 0;
+  for (const note of notes) {
+    if (note.lane === "left") leftCount += 1;
+    else rightCount += 1;
+  }
+  return leftCount <= rightCount ? "left" : "right";
+}
+
 type TapeNoteProps = {
   note: JotNote;
   viewportWidth: number;
+  laneRow: number;
   isEditing: boolean;
   isNew: boolean;
   onEdit: () => void;
@@ -220,6 +237,7 @@ type TapeNoteProps = {
 function TapeNote({
   note,
   viewportWidth,
+  laneRow,
   isEditing,
   isNew,
   onEdit,
@@ -234,9 +252,11 @@ function TapeNote({
 }: TapeNoteProps) {
   const seed = useMemo(() => hashString(note.id), [note.id]);
   const naturalWidthRatio = 0.838 + ((seed >>> 4) % 27) / 1000;
-  const widthRatio =
-    naturalWidthRatio * (viewportWidth > 720 ? 5 / 6 : 1);
-  const tapeWidth = viewportWidth * widthRatio;
+  const desktopMaxWidth = 600 + ((seed >>> 21) % 31);
+  const tapeWidth =
+    viewportWidth >= TWO_COLUMN_BREAKPOINT
+      ? Math.min(viewportWidth * naturalWidthRatio * 0.47, desktopMaxWidth)
+      : viewportWidth * naturalWidthRatio * (viewportWidth > 720 ? 5 / 6 : 1);
   const textInset = clamp(tapeWidth * 0.06, 32, 64);
   const maxTextUnits = Math.max(
     4,
@@ -433,7 +453,7 @@ function TapeNote({
   const tapeStyle: TapeProperties = {
     "--jot-paper-color": note.isCompleted ? "#BDB8AF" : palette.surface,
     "--jot-ink-color": note.isCompleted ? "#494640" : palette.ink,
-    "--jot-tape-width": `${(widthRatio * 100).toFixed(2)}vw`,
+    "--jot-tape-width": `${tapeWidth.toFixed(1)}px`,
     "--jot-text-inset": `${textInset.toFixed(1)}px`,
     "--jot-paper-shape": `polygon(${makeTornPolygon(seed)})`,
     "--jot-paper-x": `${-((seed >>> 5) % 58)}px`,
@@ -447,7 +467,9 @@ function TapeNote({
     <div
       className={styles.noteSlot}
       data-note-id={note.id}
+      data-lane={note.lane}
       data-completed={note.isCompleted || undefined}
+      style={{ "--jot-note-row": String(laneRow) } as NoteSlotProperties}
     >
       <div
         className={[
@@ -535,6 +557,7 @@ export function JotApp() {
   const announcementSequenceRef = useRef(0);
   const canvasPointerRef = useRef<CanvasPointer | null>(null);
   const lastCanvasTapAtRef = useRef(0);
+  const lastCanvasTapLaneRef = useRef<JotLane | null>(null);
   const undoTimerRef = useRef<number | null>(null);
   const deviceNoticeTimerRef = useRef<number | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -658,25 +681,36 @@ export function JotApp() {
   }, [newNoteId]);
 
   const notes = useMemo(() => sortNotes(state.notes), [state.notes]);
+  const positionedNotes = useMemo(() => {
+    const rowCounts: Record<JotLane, number> = { left: 0, right: 0 };
+    return notes.map((note) => {
+      rowCounts[note.lane] += 1;
+      return { note, laneRow: rowCounts[note.lane] };
+    });
+  }, [notes]);
 
-  const createNote = useCallback(() => {
+  const createNote = useCallback((requestedLane?: JotLane) => {
     const id = getNoteId();
     const now = Date.now();
-    updateState((current) => ({
-      notes: [
-        ...current.notes,
-        {
-          id,
-          text: "",
-          color: JOT_COLORS[current.nextColorIndex % JOT_COLORS.length],
-          isCompleted: false,
-          completedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ],
-      nextColorIndex: current.nextColorIndex + 1,
-    }));
+    updateState((current) => {
+      const lane = requestedLane ?? getBalancedLane(current.notes);
+      return {
+        notes: [
+          ...current.notes,
+          {
+            id,
+            text: "",
+            color: JOT_COLORS[current.nextColorIndex % JOT_COLORS.length],
+            lane,
+            isCompleted: false,
+            completedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        nextColorIndex: current.nextColorIndex + 1,
+      };
+    });
     setNewNoteId(id);
     setActiveNoteId(id);
     setEditingId(id);
@@ -865,11 +899,22 @@ export function JotApp() {
     dismissGestureHint();
     setEditingId(null);
     const now = Date.now();
-    if (now - lastCanvasTapAtRef.current <= CANVAS_DOUBLE_TAP_MS) {
+    const lane =
+      viewportWidth >= TWO_COLUMN_BREAKPOINT
+        ? pointer.x < viewportWidth / 2
+          ? "left"
+          : "right"
+        : null;
+    if (
+      now - lastCanvasTapAtRef.current <= CANVAS_DOUBLE_TAP_MS &&
+      lastCanvasTapLaneRef.current === lane
+    ) {
       lastCanvasTapAtRef.current = 0;
-      createNote();
+      lastCanvasTapLaneRef.current = null;
+      createNote(lane ?? undefined);
     } else {
       lastCanvasTapAtRef.current = now;
+      lastCanvasTapLaneRef.current = lane;
     }
   }
 
@@ -889,6 +934,7 @@ export function JotApp() {
       onPointerUp={handleCanvasPointerUp}
       onScroll={() => {
         lastCanvasTapAtRef.current = 0;
+        lastCanvasTapLaneRef.current = null;
         if (canvasPointerRef.current) canvasPointerRef.current.moved = true;
       }}
     >
@@ -897,7 +943,7 @@ export function JotApp() {
         aria-hidden="true"
         dangerouslySetInnerHTML={{
           __html:
-            "<!-- THESIS: The note is the control; no toolbar, account, or editor route. OWN-WORLD: OnceEgg watercolor canvas, 23 torn pigment tapes, quiet typewriter ink, down-right shadow. STORY: Double-tap blank space to write, tap to edit, double-tap to complete, swipe left to tear away. FIRST VIEWPORT: A paper field holding nine 85%-wide tapes per screen; unfinished notes lead and dimmed complete notes settle below. FORM: A single tactile note wall extending OnceEgg's paper constellation. -->",
+            "<!-- THESIS: The note is the control; no toolbar, account, or editor route. OWN-WORLD: OnceEgg watercolor canvas, 23 torn pigment tapes, quiet typewriter ink, down-right shadow. STORY: Double-tap blank space to write, tap to edit, double-tap to complete, swipe left to tear away. FIRST VIEWPORT: A single tactile stack on narrow screens becomes two invisible centered lanes on wide screens; unfinished notes lead and dimmed complete notes settle below. FORM: A responsive note wall extending OnceEgg's paper constellation. -->",
         }}
       />
 
@@ -937,11 +983,12 @@ export function JotApp() {
       ) : null}
 
       <div className={styles.notes}>
-        {notes.map((note) => (
+        {positionedNotes.map(({ note, laneRow }) => (
           <TapeNote
             key={note.id}
             note={note}
             viewportWidth={viewportWidth}
+            laneRow={laneRow}
             isEditing={editingId === note.id}
             isNew={newNoteId === note.id}
             onEdit={() => {
@@ -959,6 +1006,7 @@ export function JotApp() {
             onInteractionStart={() => {
               dismissGestureHint();
               lastCanvasTapAtRef.current = 0;
+              lastCanvasTapLaneRef.current = null;
             }}
             onFocus={() => setActiveNoteId(note.id)}
             onExit={leaveJot}

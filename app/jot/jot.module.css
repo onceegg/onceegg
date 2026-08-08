@@ -389,6 +389,40 @@
   }
 }
 
+@media (min-width: 1024px) {
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: var(--jot-note-height);
+    align-content: start;
+    column-gap: 0;
+    row-gap: var(--jot-gap);
+  }
+
+  .noteSlot {
+    grid-row: var(--jot-note-row);
+  }
+
+  .noteSlot[data-lane="left"] {
+    grid-column: 1;
+  }
+
+  .noteSlot[data-lane="right"] {
+    grid-column: 2;
+  }
+
+  .emptyState {
+    grid-column: 1 / -1;
+    grid-row: 1 / span 9;
+  }
+
+  .footerSpace {
+    grid-column: 1 / -1;
+    grid-row: span 2;
+    width: 100%;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .jotPage {
     --jot-canvas: #121212;
