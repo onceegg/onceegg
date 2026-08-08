@@ -123,6 +123,8 @@ const WASH_COLORS = ["122 146 143", "163 139 105", "112 132 127"];
 const DUST_VISIBILITY = 2.58;
 const FIBER_VISIBILITY = 1.18;
 const WORLD_SCALE = 2;
+const LIVING_PIXEL_RATIO_LIMIT = 1.5;
+const LIVING_SETTLE_HANDOFF = 1250;
 const DEFAULT_GESTURE_CHARACTER: GestureCharacter = {
   pace: 0.35,
   stillness: 0.2,
@@ -385,7 +387,10 @@ export class FieldEngine {
 
     this.width = width;
     this.height = height;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(
+      window.devicePixelRatio || 1,
+      this.material === "living" ? LIVING_PIXEL_RATIO_LIMIT : 2,
+    );
     this.canvas.width = Math.round(width * this.dpr);
     this.canvas.height = Math.round(height * this.dpr);
 
@@ -1063,13 +1068,18 @@ export class FieldEngine {
         this.material === "pigment" ? 0.08 : 0.13,
         1.16,
       );
-      particle.revealAt = clamp(
-        this.material === "pigment"
-          ? 0.04 + this.random() * 0.58 - particle.density * 0.12 - anchorInfluence * 0.08
-          : 0.07 + this.random() * 0.49 - anchorInfluence * 0.045,
-        this.material === "pigment" ? 0 : 0.035,
-        this.material === "pigment" ? 0.62 : 0.58,
-      );
+      particle.revealAt = wasGestureActivated
+        ? 0
+        : clamp(
+            this.material === "pigment"
+              ? 0.04 +
+                this.random() * 0.58 -
+                particle.density * 0.12 -
+                anchorInfluence * 0.08
+              : 0.07 + this.random() * 0.49 - anchorInfluence * 0.045,
+            this.material === "pigment" ? 0 : 0.035,
+            this.material === "pigment" ? 0.62 : 0.58,
+          );
       const materialPresence = clamp(
         pathInfluence * pathTexture * 0.5 + anchorInfluence * 0.84,
         0,
@@ -1087,7 +1097,10 @@ export class FieldEngine {
       );
       if (this.material === "living") {
         particle.baseAlpha *= 1.08 + materialPresence * 0.08;
-        if (materialSelector < 0.055 + materialPresence * 0.11) {
+        if (
+          !wasGestureActivated &&
+          materialSelector < 0.055 + materialPresence * 0.11
+        ) {
           particle.form = 2;
           particle.size = Math.max(
             particle.size,
@@ -1095,7 +1108,10 @@ export class FieldEngine {
           );
           particle.aspect = 0.62 + shapeVariation * 0.28;
           particle.depth = Math.max(particle.depth, 0.76);
-        } else if (materialSelector < 0.34 + materialPresence * 0.12) {
+        } else if (
+          !wasGestureActivated &&
+          materialSelector < 0.34 + materialPresence * 0.12
+        ) {
           particle.form = 1;
           particle.size = Math.max(
             particle.size,
@@ -1872,8 +1888,11 @@ export class FieldEngine {
       const worldX = group.originX + particle.x;
       const worldY = group.originY + particle.y;
       const alpha = Math.min(
-        particle.baseAlpha * particle.activation * DUST_VISIBILITY,
-        particle.form === 2 ? 0.62 : particle.form === 1 ? 0.52 : 0.46,
+        particle.alpha *
+          DUST_VISIBILITY *
+          (0.84 + particle.depth * 0.3) *
+          (0.94 + clamp(particle.imprint / 1.2, 0, 1) * 0.24),
+        particle.form === 2 ? 0.68 : particle.form === 1 ? 0.58 : 0.52,
       );
       this.drawParticleShape(context, particle, worldX, worldY, alpha);
       particle.state = "settled";
@@ -2001,6 +2020,12 @@ export class FieldEngine {
     context.fillStyle = `rgb(${DUST_COLORS[particle.color]} / ${alpha})`;
 
     if (this.material === "living") {
+      if (particle.form === 0 && displaySize < 1.15) {
+        context.beginPath();
+        context.arc(x, y, displaySize, 0, Math.PI * 2);
+        context.fill();
+        return;
+      }
       const pointCount = particle.form === 2 ? 8 : particle.form === 1 ? 7 : 6;
       const points = Array.from({ length: pointCount }, (_, index) => {
         const angle = particle.angle + (index / pointCount) * Math.PI * 2;
@@ -2202,8 +2227,16 @@ export class FieldEngine {
     }
   }
 
-  private drawParticles() {
+  private drawParticles(progress: number) {
     const context = this.context;
+    const materialProgress =
+      this.stage === "settling"
+        ? clamp(progress / 0.18, 0, 1)
+        : this.stage === "drawing" || this.stage === "idle"
+          ? 0
+          : 1;
+    const materialEase =
+      materialProgress * materialProgress * (3 - 2 * materialProgress);
     for (const particle of this.particles) {
       if (
         particle.alpha < 0.002 ||
@@ -2227,7 +2260,8 @@ export class FieldEngine {
         particle.alpha *
         DUST_VISIBILITY *
         (0.84 + particle.depth * 0.3) *
-        (0.94 + clamp(particle.imprint / 1.2, 0, 1) * 0.24);
+        (0.94 +
+          clamp(particle.imprint / 1.2, 0, 1) * 0.24 * materialEase);
       if (
         this.material === "living" &&
         particle.state === "drifting" &&
@@ -2294,7 +2328,8 @@ export class FieldEngine {
       this.stage === "drawing" ||
       this.stage === "settling" ||
       revealAnimating ||
-      (this.stage === "pick" && this.gatherActive);
+      ((this.stage === "pick" || this.stage === "revealed") &&
+        this.gatherActive);
     const quietFrame = this.stage === "idle" || !activeMotion;
     const minimumFrameInterval =
       livingStage && !this.reducedMotion
@@ -2319,12 +2354,20 @@ export class FieldEngine {
       : this.material === "pigment"
         ? 5600
         : 6200;
+    const settleElapsed = Math.max(0, time - this.settleStartedAt);
+    const settleHandoffDuration =
+      !this.reducedMotion && this.material === "living"
+        ? LIVING_SETTLE_HANDOFF
+        : 0;
     const settleProgress =
       this.stage === "settling"
-        ? clamp((time - this.settleStartedAt) / settleDuration, 0, 1)
+        ? clamp(settleElapsed / settleDuration, 0, 1)
         : this.stage === "drawing" || this.stage === "idle"
           ? 0
           : 1;
+    const settleComplete =
+      this.stage === "settling" &&
+      settleElapsed >= settleDuration + settleHandoffDuration;
     this.updateParticles(deltaSeconds, settleProgress);
 
     const context = this.context;
@@ -2334,9 +2377,9 @@ export class FieldEngine {
     this.drawDeposit();
     this.drawWashes(settleProgress, time);
     this.drawFibers(settleProgress, time);
-    this.drawParticles();
+    this.drawParticles(settleProgress);
 
-    if (this.stage === "settling" && settleProgress >= 1 && !this.settledNotified) {
+    if (settleComplete && !this.settledNotified) {
       this.settledNotified = true;
       this.commitDeposit();
       this.stage = "pick";
