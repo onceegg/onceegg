@@ -391,6 +391,8 @@
 
 @media (min-width: 1024px) {
   .notes {
+    --jot-column-inner-inset: clamp(1.75rem, 2.5vw, 3rem);
+
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: var(--jot-note-height);
@@ -405,10 +407,14 @@
 
   .noteSlot[data-lane="left"] {
     grid-column: 1;
+    justify-content: flex-end;
+    padding-right: var(--jot-column-inner-inset);
   }
 
   .noteSlot[data-lane="right"] {
     grid-column: 2;
+    justify-content: flex-start;
+    padding-left: var(--jot-column-inner-inset);
   }
 
   .emptyState {
