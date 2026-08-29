@@ -1,11 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
   <title id="title">OnceEgg</title>
-  <desc id="desc">An orange egg opened by a short rounded crack.</desc>
-  <defs>
-    <mask id="onceegg-icon-crack">
-      <rect width="100" height="100" fill="white"/>
-      <path d="M37 54 L45 47 L51 54 L58 46 L65 51" fill="none" stroke="black" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </mask>
-  </defs>
-  <path d="M50 11 C65 11 78 40 78 62 C78 79 66 89 50 89 C34 89 22 79 22 62 C22 40 35 11 50 11 Z" fill="#e38b4e" mask="url(#onceegg-icon-crack)"/>
+  <desc id="desc">An orange egg marked by a short rounded white crack.</desc>
+  <path d="M50 11 C65 11 78 40 78 62 C78 79 66 89 50 89 C34 89 22 79 22 62 C22 40 35 11 50 11 Z" fill="#e38b4e"/>
+  <path d="M37 54 L45 47 L51 54 L58 46 L65 51" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
