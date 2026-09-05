@@ -292,8 +292,7 @@ p {
   clip-path: var(--tape-clip);
 }
 
-.incubatorWordLabel,
-.incubatorWord .orangePeriod {
+.incubatorWordLabel {
   flex: none;
   white-space: nowrap;
 }
@@ -458,10 +457,6 @@ p {
 
 .hatchingContent.isRevealed h2 {
   color: var(--onceegg-blue);
-}
-
-.orangePeriod {
-  color: var(--onceegg-orange);
 }
 
 .backLink,

@@ -3,7 +3,6 @@ import { Courier_Prime, Newsreader } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
-import "./incubator-notes.css";
 
 const newsreader = Newsreader({
   axes: ["opsz"],
