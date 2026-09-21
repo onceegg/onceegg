@@ -906,12 +906,25 @@ p {
 }
 
 @media (hover: none), (pointer: coarse) {
-  /* Keep the textured tape stable while a finger moves it. */
+  /* Avoid WebKit drop-shadow repaint trails; use a separate box-shadow instead. */
   .incubatorWord {
+    filter: none;
     transition:
       top 520ms cubic-bezier(0.16, 1, 0.3, 1),
       left 520ms cubic-bezier(0.16, 1, 0.3, 1),
       color 160ms ease-out;
+  }
+
+  .incubatorWord::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0.12rem;
+    border-radius: 0.08rem;
+    box-shadow:
+      0.14rem 0.2rem 0.09rem rgb(52 46 36 / 11.99%),
+      0.32rem 0.42rem 0.4rem rgb(52 46 36 / 5.71%);
+    content: "";
+    pointer-events: none;
   }
 
   .incubatorWord:hover,
@@ -919,7 +932,7 @@ p {
   .incubatorWord:focus-visible,
   .incubatorWord.isActive:hover,
   .incubatorWord:focus-visible:hover {
-    filter: var(--onceegg-tape-shadow);
+    filter: none;
     opacity: var(--tape-rest-opacity);
     transform: translate(-50%, -50%) rotate(var(--tape-tilt));
   }
