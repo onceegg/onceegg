@@ -20,6 +20,16 @@ export type FieldSelection = {
 
 export type FieldMaterial = "pigment" | "living";
 
+type GestureSegment = {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  lengthSquared: number;
+  tangentX: number;
+  tangentY: number;
+};
+
 type ParticleState = "latent" | "active" | "drifting" | "settled";
 
 type DustParticle = {
@@ -88,6 +98,28 @@ type CompositionAnchor = {
   color: number;
 };
 
+type ParticleOrbit = {
+  composition: CompositionAnchor[];
+  restX: number;
+  restY: number;
+  anchorX: number;
+  anchorY: number;
+  offsetX: number;
+  offsetY: number;
+  tangentX: number;
+  tangentY: number;
+};
+
+type LivingParticleShape = {
+  form: DustParticle["form"];
+  drift: number;
+  angle: number;
+  displaySize: number;
+  aspect: number;
+  irregularities: Float64Array;
+  offsets: Float64Array;
+};
+
 type RevealPoint = {
   x: number;
   y: number;
@@ -120,6 +152,9 @@ type EngineOptions = {
 const DUST_COLORS = ["76 91 88", "65 104 117", "151 113 72"];
 const FIBER_COLORS = ["88 106 103", "128 116 96", "76 101 108"];
 const WASH_COLORS = ["122 146 143", "163 139 105", "112 132 127"];
+const DUST_FILL_STYLES = DUST_COLORS.map((color) =>
+  Array.from({ length: 256 }, (_, alpha) => `rgb(${color} / ${alpha / 255})`),
+);
 const DUST_VISIBILITY = 2.58;
 const FIBER_VISIBILITY = 1.18;
 const WORLD_SCALE = 2;
@@ -183,12 +218,26 @@ function seededRandom(seed: number) {
   };
 }
 
-function nearestProjection(
-  x: number,
-  y: number,
-  points: GesturePoint[],
-) {
-  let nearest = {
+function createGestureSegments(points: GesturePoint[]): GestureSegment[] {
+  return points.slice(1).map((second, index) => {
+    const first = points[index];
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    return {
+      x: first.x,
+      y: first.y,
+      dx,
+      dy,
+      lengthSquared: dx * dx + dy * dy,
+      tangentX: dx / length,
+      tangentY: dy / length,
+    };
+  });
+}
+
+function nearestProjection(x: number, y: number, segments: GestureSegment[]) {
+  const nearest = {
     distance: Number.POSITIVE_INFINITY,
     x,
     y,
@@ -196,29 +245,28 @@ function nearestProjection(
     tangentY: 0,
   };
 
-  for (let index = 1; index < points.length; index += 1) {
-    const first = points[index - 1];
-    const second = points[index];
-    const dx = second.x - first.x;
-    const dy = second.y - first.y;
-    const lengthSquared = dx * dx + dy * dy;
+  for (const segment of segments) {
+    const { dx, dy, lengthSquared } = segment;
     const amount =
       lengthSquared === 0
         ? 0
-        : clamp(((x - first.x) * dx + (y - first.y) * dy) / lengthSquared, 0, 1);
-    const projectionX = first.x + dx * amount;
-    const projectionY = first.y + dy * amount;
-    const distance = Math.hypot(x - projectionX, y - projectionY);
+        : clamp(((x - segment.x) * dx + (y - segment.y) * dy) / lengthSquared, 0, 1);
+    const projectionX = segment.x + dx * amount;
+    const projectionY = segment.y + dy * amount;
+    const offsetX = x - projectionX;
+    const offsetY = y - projectionY;
+    if (
+      Math.abs(offsetX) >= nearest.distance ||
+      Math.abs(offsetY) >= nearest.distance
+    ) continue;
+    const distance = Math.hypot(offsetX, offsetY);
 
     if (distance < nearest.distance) {
-      const length = Math.max(0.001, Math.hypot(dx, dy));
-      nearest = {
-        distance,
-        x: projectionX,
-        y: projectionY,
-        tangentX: dx / length,
-        tangentY: dy / length,
-      };
+      nearest.distance = distance;
+      nearest.x = projectionX;
+      nearest.y = projectionY;
+      nearest.tangentX = segment.tangentX;
+      nearest.tangentY = segment.tangentY;
     }
   }
 
@@ -328,6 +376,7 @@ export class FieldEngine {
   private readonly seed: number;
   private readonly material: FieldMaterial;
   private readonly reducedMotion: boolean;
+  private readonly desktopPointer: boolean;
   private readonly onSettled: () => void;
 
   private width = 1;
@@ -340,16 +389,23 @@ export class FieldEngine {
   private cameraX = 0;
   private cameraY = 0;
   private particles: DustParticle[] = [];
+  private movingParticles: DustParticle[] | null = null;
+  private readonly particleOrbits = new WeakMap<DustParticle, ParticleOrbit>();
+  private readonly particleShapes = new WeakMap<DustParticle, LivingParticleShape>();
+  private readonly shapePoints = new Float64Array(16);
   private fibers: FiberFragment[] = [];
   private washes: PigmentWash[] = [];
   private composition: CompositionAnchor[] = [];
   private gesture: GesturePoint[] = [];
   private imprintGesture: GesturePoint[] = [];
+  private imprintSegments: GestureSegment[] = [];
   private gestureCharacter = DEFAULT_GESTURE_CHARACTER;
   private group: CompositionGroup | null = null;
   private depositSurface: DepositSurface | null = null;
   private depositContext: DepositContext | null = null;
   private depositCommitted = false;
+  private preparedDepositWashes = 0;
+  private depositFibersPrepared = false;
   private gatherPoint: { x: number; y: number } | null = null;
   private gatherActive = false;
   private revealPoint: RevealPoint | null = null;
@@ -374,6 +430,9 @@ export class FieldEngine {
     this.random = seededRandom(seed);
     this.material = material;
     this.reducedMotion = reducedMotion;
+    this.desktopPointer = typeof window.matchMedia === "function"
+      ? window.matchMedia("(hover: hover) and (pointer: fine)").matches
+      : canvas.getBoundingClientRect().width >= 680;
     this.onSettled = onSettled;
     this.resize();
     this.frame = window.requestAnimationFrame(this.render);
@@ -465,6 +524,7 @@ export class FieldEngine {
     this.createCompositionGroup(interpretedWorld);
     this.createComposition();
     this.assignParticlesToGroup();
+    this.refreshMovingParticles();
     this.createWashes();
     this.createFibers();
     this.planGroupAdjustment();
@@ -622,23 +682,6 @@ export class FieldEngine {
     };
   }
 
-  private localToScreen(x: number, y: number) {
-    const group = this.group;
-    if (!group) return this.worldToScreen(x, y);
-    return {
-      x:
-        group.originX +
-        group.translateX +
-        x * group.scale -
-        this.cameraX,
-      y:
-        group.originY +
-        group.translateY +
-        y * group.scale -
-        this.cameraY,
-    };
-  }
-
   private activateNearGesture(first: GesturePoint, second: GesturePoint) {
     const dx = second.x - first.x;
     const dy = second.y - first.y;
@@ -668,7 +711,11 @@ export class FieldEngine {
             );
       const closestX = first.x + dx * amount;
       const closestY = first.y + dy * amount;
-      const distance = Math.hypot(particle.x - closestX, particle.y - closestY);
+      const offsetX = particle.x - closestX;
+      const offsetY = particle.y - closestY;
+      // Reject only points that the circular distance check also excludes.
+      if (Math.abs(offsetX) >= radius || Math.abs(offsetY) >= radius) continue;
+      const distance = Math.hypot(offsetX, offsetY);
       if (distance >= radius) continue;
       const proximity = Math.pow(1 - distance / radius, 1.45);
       const curl = valueNoise(
@@ -853,6 +900,7 @@ export class FieldEngine {
       x: point.x - origin.x,
       y: point.y - origin.y,
     }));
+    this.imprintSegments = createGestureSegments(this.imprintGesture);
     this.group = {
       originX: origin.x,
       originY: origin.y,
@@ -933,16 +981,21 @@ export class FieldEngine {
       76,
       this.material === "pigment" ? 168 : 138,
     );
+    let pathLeft = Number.POSITIVE_INFINITY;
+    let pathRight = Number.NEGATIVE_INFINITY;
+    let pathTop = Number.POSITIVE_INFINITY;
+    let pathBottom = Number.NEGATIVE_INFINITY;
+    for (const point of this.imprintGesture) {
+      pathLeft = Math.min(pathLeft, point.x);
+      pathRight = Math.max(pathRight, point.x);
+      pathTop = Math.min(pathTop, point.y);
+      pathBottom = Math.max(pathBottom, point.y);
+    }
 
     for (const particle of this.particles) {
       if (particle.state === "settled" || particle.state === "drifting") continue;
       const localX = particle.x - group.originX;
       const localY = particle.y - group.originY;
-      const projection = nearestProjection(localX, localY, this.imprintGesture);
-      const pathInfluence = Math.exp(
-        -(projection.distance * projection.distance) /
-          (2 * corridorWidth * corridorWidth),
-      );
       let anchor: CompositionAnchor | null = null;
       let anchorInfluence = 0;
       for (const candidate of this.composition) {
@@ -961,13 +1014,36 @@ export class FieldEngine {
         67,
         this.seed ^ 0x27d4eb2d,
       );
+      const wasGestureActivated = particle.state === "active";
+      if (!wasGestureActivated) {
+        // Distance to the expanded bounding box is a conservative lower bound
+        // on distance to every path segment. Keep a pixel of rounding margin.
+        const minimumDistance = Math.max(
+          0, pathLeft - localX - 1, localX - pathRight - 1,
+          pathTop - localY - 1, localY - pathBottom - 1,
+        );
+        const maximumPathInfluence = Math.exp(
+          -(minimumDistance * minimumDistance) /
+            (2 * corridorWidth * corridorWidth),
+        );
+        const maximumActivationChance = this.material === "pigment"
+          ? maximumPathInfluence * (0.52 + particle.density * 0.38) +
+            anchorInfluence * 0.68
+          : maximumPathInfluence * (0.46 + particle.density * 0.3) +
+            anchorInfluence * 0.82;
+        if (selector > maximumActivationChance) continue;
+      }
+      const projection = nearestProjection(localX, localY, this.imprintSegments);
+      const pathInfluence = Math.exp(
+        -(projection.distance * projection.distance) /
+          (2 * corridorWidth * corridorWidth),
+      );
       const activationChance =
         this.material === "pigment"
           ? pathInfluence * (0.52 + particle.density * 0.38) +
             anchorInfluence * 0.68
           : pathInfluence * (0.46 + particle.density * 0.3) +
             anchorInfluence * 0.82;
-      const wasGestureActivated = particle.state === "active";
       if (!wasGestureActivated && selector > activationChance) continue;
 
       particle.state = "active";
@@ -1277,7 +1353,7 @@ export class FieldEngine {
         : Math.min(this.width, this.height) * 0.12 * (this.random() - 0.5);
       const x = point.x + Math.cos(angle) * scatter;
       const y = point.y + Math.sin(angle) * scatter * 0.72;
-      const projection = nearestProjection(x, y, this.imprintGesture);
+      const projection = nearestProjection(x, y, this.imprintSegments);
       const fieldAngle = Math.atan2(projection.tangentY, projection.tangentX);
       const fragmentAngle =
         fieldAngle +
@@ -1398,16 +1474,24 @@ export class FieldEngine {
     group.translateY = lerp(0, group.targetTranslateY, eased);
   }
 
-  private localFlow(x: number, y: number, time: number) {
-    const phase =
+  private localFlowAngle(x: number, y: number, time: number) {
+    return (
       valueNoise(
         x / 188 + time * 0.000018,
         y / 188 - time * 0.000013,
         this.seed ^ 0x9e3779b9,
       ) *
       Math.PI *
-      2;
-    return { x: Math.cos(phase), y: Math.sin(phase) };
+      2
+    );
+  }
+
+  private refreshMovingParticles() {
+    // Preserve pool order: alpha compositing and recycling depend on it.
+    // Once drawing ends, no new particles are activated by pointer input.
+    this.movingParticles = (this.movingParticles ?? this.particles).filter(
+      (particle) => particle.state === "active" || particle.state === "drifting",
+    );
   }
 
   private updateParticles(deltaSeconds: number, progress: number) {
@@ -1417,8 +1501,18 @@ export class FieldEngine {
     const revealElapsed = this.revealPoint
       ? Math.max(0, this.lastFrameAt - this.revealStartedAt)
       : 0;
+    const alphaResponse =
+      isSettling && this.material === "living" ? 1.75 : 4.8;
+    const alphaStep = Math.min(1, deltaSeconds * alphaResponse);
+    const damping = isDrawing
+      ? Math.pow(this.material === "pigment" ? 0.895 : 0.935, deltaSeconds * 60)
+      : isSettling
+        ? Math.pow(this.material === "pigment" ? 0.88 : 0.9, deltaSeconds * 60)
+        : 1;
+    const cursorPullNear = 1 - Math.exp(-deltaSeconds * 2.1);
+    const cursorPullFar = 1 - Math.exp(-deltaSeconds * 0.72);
 
-    for (const particle of this.particles) {
+    for (const particle of this.movingParticles ?? this.particles) {
       if (particle.state === "latent" || particle.state === "settled") continue;
 
       const visible = isDrawing
@@ -1427,24 +1521,17 @@ export class FieldEngine {
           ? particle.activation
           : 0;
       const targetAlpha = particle.baseAlpha * visible;
-      const alphaResponse =
-        isSettling && this.material === "living" ? 1.75 : 4.8;
-      particle.alpha +=
-        (targetAlpha - particle.alpha) *
-        Math.min(1, deltaSeconds * alphaResponse);
+      particle.alpha += (targetAlpha - particle.alpha) * alphaStep;
 
       if (isDrawing && !particle.grouped) {
-        const damping = Math.pow(
-          this.material === "pigment" ? 0.895 : 0.935,
-          deltaSeconds * 60,
-        );
         particle.vx *= damping;
         particle.vy *= damping;
         particle.x += particle.vx * deltaSeconds * 60;
         particle.y += particle.vy * deltaSeconds * 60;
       } else if (isSettling && particle.grouped) {
-        const projection = nearestProjection(particle.x, particle.y, this.imprintGesture);
-        const flow = this.localFlow(particle.x, particle.y, this.lastFrameAt);
+        const flowAngle = this.localFlowAngle(particle.x, particle.y, this.lastFrameAt);
+        const flowX = Math.cos(flowAngle);
+        const flowY = Math.sin(flowAngle);
         const localProgress = clamp(
           (progress - particle.revealAt) /
             Math.max(0.12, 1 - particle.revealAt),
@@ -1468,32 +1555,31 @@ export class FieldEngine {
               remaining
             : 0;
         particle.vx +=
-          (particle.imprintX + flow.x * livingPulse - particle.x) * pull;
+          (particle.imprintX + flowX * livingPulse - particle.x) * pull;
         particle.vy +=
-          (particle.imprintY + flow.y * livingPulse - particle.y) * pull;
+          (particle.imprintY + flowY * livingPulse - particle.y) * pull;
         if (this.material === "pigment") {
+          const projection = nearestProjection(particle.x, particle.y, this.imprintSegments);
           const wick =
             (0.005 + particle.density * 0.013) *
             remaining *
             motionScale;
           particle.vx +=
-            (projection.tangentX * 0.24 + flow.x * 0.76) * wick;
+            (projection.tangentX * 0.24 + flowX * 0.76) * wick;
           particle.vy +=
-            (projection.tangentY * 0.24 + flow.y * 0.76) * wick;
+            (projection.tangentY * 0.24 + flowY * 0.76) * wick;
         } else {
-          particle.vx += flow.x * 0.0045 * remaining * motionScale;
-          particle.vy += flow.y * 0.0045 * remaining * motionScale;
+          particle.vx += flowX * 0.0045 * remaining * motionScale;
+          particle.vy += flowY * 0.0045 * remaining * motionScale;
         }
-        const damping = Math.pow(
-          this.material === "pigment" ? 0.88 : 0.9,
-          deltaSeconds * 60,
-        );
         particle.vx *= damping;
         particle.vy *= damping;
         particle.x += particle.vx * deltaSeconds * 60;
         particle.y += particle.vy * deltaSeconds * 60;
       } else if (particle.state === "drifting" && particle.grouped) {
-        this.updateDriftingParticle(particle, deltaSeconds, revealElapsed);
+        this.updateDriftingParticle(
+          particle, deltaSeconds, revealElapsed, cursorPullNear, cursorPullFar,
+        );
       }
 
       if (this.isBeyondWorldOverscan(particle)) this.recycleOutsideWorld(particle);
@@ -1551,14 +1637,62 @@ export class FieldEngine {
     };
   }
 
+  private getParticleOrbit(particle: DustParticle) {
+    const cached = this.particleOrbits.get(particle);
+    if (
+      cached &&
+      cached.composition === this.composition &&
+      cached.restX === particle.restX &&
+      cached.restY === particle.restY
+    ) {
+      return cached;
+    }
+
+    let nearestAnchor = this.composition[0];
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const anchor of this.composition) {
+      const distance = Math.hypot(
+        particle.restX - anchor.x,
+        particle.restY - anchor.y,
+      );
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestAnchor = anchor;
+      }
+    }
+    const anchorX = nearestAnchor?.x ?? particle.restX;
+    const anchorY = nearestAnchor?.y ?? particle.restY;
+    const offsetX = particle.restX - anchorX;
+    const offsetY = particle.restY - anchorY;
+    const tangentLength = Math.max(1, Math.hypot(offsetX, offsetY));
+    const orbit: ParticleOrbit = {
+      composition: this.composition,
+      restX: particle.restX,
+      restY: particle.restY,
+      anchorX,
+      anchorY,
+      offsetX,
+      offsetY,
+      tangentX: -offsetY / tangentLength,
+      tangentY: offsetX / tangentLength,
+    };
+    // Anchors and rest positions stay fixed while the particles drift.
+    this.particleOrbits.set(particle, orbit);
+    return orbit;
+  }
+
   private updateDriftingParticle(
     particle: DustParticle,
     deltaSeconds: number,
     revealElapsed: number,
+    cursorPullNear: number,
+    cursorPullFar: number,
   ) {
     const time = this.lastFrameAt;
     const structure = clamp(particle.imprint / 1.2, 0, 1);
-    const flow = this.localFlow(particle.restX, particle.restY, time);
+    const flowAngle = this.localFlowAngle(particle.restX, particle.restY, time);
+    const flowX = Math.cos(flowAngle);
+    const flowY = Math.sin(flowAngle);
     const phase =
       particle.drift * 0.19 +
       particle.restX * 0.0021 +
@@ -1593,34 +1727,17 @@ export class FieldEngine {
       const travel = 1.2 + structure * 2.2 + particle.depth * 1.4;
       targetX =
         particle.restX +
-        (Math.sin(time * 0.000055 + phase) * 0.42 + flow.x * 0.58) * travel;
+        (Math.sin(time * 0.000055 + phase) * 0.42 + flowX * 0.58) * travel;
       targetY =
         particle.restY +
-        (Math.cos(time * 0.000047 + phase * 1.07) * 0.42 + flow.y * 0.58) * travel;
+        (Math.cos(time * 0.000047 + phase * 1.07) * 0.42 + flowY * 0.58) * travel;
     } else {
-      let nearestAnchor = this.composition[0];
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      for (const anchor of this.composition) {
-        const distance = Math.hypot(
-          particle.restX - anchor.x,
-          particle.restY - anchor.y,
-        );
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestAnchor = anchor;
-        }
-      }
-      const anchorX = nearestAnchor?.x ?? particle.restX;
-      const anchorY = nearestAnchor?.y ?? particle.restY;
-      const offsetX = particle.restX - anchorX;
-      const offsetY = particle.restY - anchorY;
+      const { anchorX, anchorY, offsetX, offsetY, tangentX, tangentY } =
+        this.getParticleOrbit(particle);
       const breath = this.reducedMotion
         ? 0
         : Math.sin(driftTime * 0.00072 + phase * 1.7) *
           (0.012 + particle.depth * 0.008);
-      const tangentLength = Math.max(1, Math.hypot(offsetX, offsetY));
-      const tangentX = -offsetY / tangentLength;
-      const tangentY = offsetX / tangentLength;
       const wander =
         Math.sin(driftTime * 0.00031 + phase * 2.3) *
         (0.7 + particle.depth * 1.6) *
@@ -1637,14 +1754,14 @@ export class FieldEngine {
         anchorX +
         offsetX * (1 + breath * (persistentMotion ? 1.85 * mobility : 1)) +
         tangentX * wander +
-        flow.x * flowTravel +
-        flow.y * crossWander;
+        flowX * flowTravel +
+        flowY * crossWander;
       targetY =
         anchorY +
         offsetY * (1 + breath * (persistentMotion ? 1.85 * mobility : 1)) +
         tangentY * wander +
-        flow.y * flowTravel -
-        flow.x * crossWander;
+        flowY * flowTravel -
+        flowX * crossWander;
       particle.alpha *=
         0.998 + Math.sin(time * 0.00072 + phase) * 0.002;
     }
@@ -1669,8 +1786,7 @@ export class FieldEngine {
       (this.stage === "pick" || followsRevealedCursor);
     const cursorNearby =
       this.gatherPoint !== null && cursorEligible && cursorProximity > 0;
-    const pullResponse =
-      1 - Math.exp(-deltaSeconds * (cursorNearby ? 2.1 : 0.72));
+    const pullResponse = cursorNearby ? cursorPullNear : cursorPullFar;
     particle.cursorPull = lerp(
       particle.cursorPull,
       cursorNearby ? Math.pow(cursorProximity, 0.72) : 0,
@@ -1784,7 +1900,7 @@ export class FieldEngine {
     particle.y = lerp(particle.y, targetY, response);
     if (particle.form !== 0) {
       particle.angle +=
-        (flow.x - flow.y) *
+        (flowX - flowY) *
         deltaSeconds *
         (this.material === "pigment" ? 0.004 : 0.018);
     }
@@ -1843,7 +1959,7 @@ export class FieldEngine {
     this.stampWashes(context);
     this.stampFibers(context);
 
-    for (const particle of this.particles) {
+    for (const particle of this.movingParticles ?? this.particles) {
       if (particle.state !== "active" || !particle.grouped) continue;
       const retainSelector = hashGrid(
         Math.floor(particle.drift * 32000),
@@ -1899,6 +2015,7 @@ export class FieldEngine {
       particle.alpha = 0;
     }
     this.depositCommitted = true;
+    this.refreshMovingParticles();
   }
 
   private traceWashShape(
@@ -1934,10 +2051,24 @@ export class FieldEngine {
     context.closePath();
   }
 
-  private stampWashes(context: DepositContext) {
+  private prepareDepositBase() {
+    const context = this.depositContext;
+    if (!context || this.depositCommitted) return;
+    // This canvas stays hidden until commitDeposit. Spread its fixed artwork
+    // across earlier frames without freezing any moving particles early.
+    if (this.preparedDepositWashes < this.washes.length) {
+      this.stampWashes(context, 1);
+    } else if (!this.depositFibersPrepared) {
+      this.stampFibers(context);
+    }
+  }
+
+  private stampWashes(context: DepositContext, limit = this.washes.length) {
     const group = this.group;
     if (!group) return;
-    for (const wash of this.washes) {
+    const end = Math.min(this.washes.length, this.preparedDepositWashes + limit);
+    for (; this.preparedDepositWashes < end; this.preparedDepositWashes += 1) {
+      const wash = this.washes[this.preparedDepositWashes];
       const worldX = group.originX + wash.x;
       const worldY = group.originY + wash.y;
       context.save();
@@ -1962,7 +2093,7 @@ export class FieldEngine {
 
   private stampFibers(context: DepositContext) {
     const group = this.group;
-    if (!group) return;
+    if (!group || this.depositFibersPrepared) return;
     context.lineCap = "round";
     context.lineJoin = "round";
     for (const fiber of this.fibers) {
@@ -1979,6 +2110,7 @@ export class FieldEngine {
       context.lineWidth = 0.3 + ((fiber.phase / (Math.PI * 2)) % 1) * 0.34;
       context.stroke();
     }
+    this.depositFibersPrepared = true;
   }
 
   private eraseDepositForReveal(point: RevealPoint) {
@@ -2002,6 +2134,57 @@ export class FieldEngine {
     context.restore();
   }
 
+  private getLivingParticleShape(particle: DustParticle, displaySize: number) {
+    let shape = this.particleShapes.get(particle);
+    if (!shape || shape.form !== particle.form || shape.drift !== particle.drift) {
+      const pointCount = particle.form === 2 ? 8 : particle.form === 1 ? 7 : 6;
+      const irregularities = new Float64Array(pointCount);
+      for (let index = 0; index < pointCount; index += 1) {
+        irregularities[index] =
+          0.78 +
+          hashGrid(
+            Math.floor(particle.drift * 29000),
+            index * 23 + 11,
+            this.seed ^ 0x9e3779b9,
+          ) *
+            0.34;
+      }
+      shape = {
+        form: particle.form,
+        drift: particle.drift,
+        angle: Number.NaN,
+        displaySize: Number.NaN,
+        aspect: Number.NaN,
+        irregularities,
+        offsets: new Float64Array(pointCount * 2),
+      };
+      this.particleShapes.set(particle, shape);
+    }
+
+    if (
+      shape.angle !== particle.angle ||
+      shape.displaySize !== displaySize ||
+      shape.aspect !== particle.aspect
+    ) {
+      const pointCount = shape.irregularities.length;
+      for (let index = 0; index < pointCount; index += 1) {
+        const angle = particle.angle + (index / pointCount) * Math.PI * 2;
+        const irregularity = shape.irregularities[index];
+        // Keep the original arithmetic order and double precision.
+        shape.offsets[index * 2] = Math.cos(angle) * displaySize * irregularity;
+        shape.offsets[index * 2 + 1] =
+          Math.sin(angle) *
+          displaySize *
+          irregularity *
+          (particle.form === 0 ? 0.92 : particle.aspect);
+      }
+      shape.angle = particle.angle;
+      shape.displaySize = displaySize;
+      shape.aspect = particle.aspect;
+    }
+    return shape.offsets;
+  }
+
   private drawParticleShape(
     context: DepositContext,
     particle: DustParticle,
@@ -2017,7 +2200,14 @@ export class FieldEngine {
       (0.88 + particle.depth * 0.24) *
       (1 + mineralPeak * 0.14) *
       (this.material === "living" ? 1.14 : 1);
-    context.fillStyle = `rgb(${DUST_COLORS[particle.color]} / ${alpha})`;
+    // Reuse the desktop canvas's 8-bit CSS colors instead of parsing thousands
+    // of new strings per frame. Keep exact input near a float-rounding boundary.
+    const alphaByte = alpha * 255;
+    const nearRoundingBoundary =
+      Math.abs(alphaByte - Math.floor(alphaByte) - 0.5) < 0.0001;
+    context.fillStyle = this.desktopPointer && !nearRoundingBoundary
+      ? DUST_FILL_STYLES[particle.color][Math.round(alphaByte)]
+      : `rgb(${DUST_COLORS[particle.color]} / ${alpha})`;
 
     if (this.material === "living") {
       if (particle.form === 0 && displaySize < 1.15) {
@@ -2026,39 +2216,25 @@ export class FieldEngine {
         context.fill();
         return;
       }
-      const pointCount = particle.form === 2 ? 8 : particle.form === 1 ? 7 : 6;
-      const points = Array.from({ length: pointCount }, (_, index) => {
-        const angle = particle.angle + (index / pointCount) * Math.PI * 2;
-        const irregularity =
-          0.78 +
-          hashGrid(
-            Math.floor(particle.drift * 29000),
-            index * 23 + 11,
-            this.seed ^ 0x9e3779b9,
-          ) *
-            0.34;
-        return {
-          x: x + Math.cos(angle) * displaySize * irregularity,
-          y:
-            y +
-            Math.sin(angle) *
-              displaySize *
-              irregularity *
-              (particle.form === 0 ? 0.92 : particle.aspect),
-        };
-      });
-      const first = points[0];
-      const last = points.at(-1) ?? first;
+      const offsets = this.getLivingParticleShape(particle, displaySize);
+      const points = this.shapePoints;
+      for (let index = 0; index < offsets.length; index += 2) {
+        points[index] = x + offsets[index];
+        points[index + 1] = y + offsets[index + 1];
+      }
+      const lastIndex = offsets.length - 2;
       context.beginPath();
-      context.moveTo((last.x + first.x) * 0.5, (last.y + first.y) * 0.5);
-      for (let index = 0; index < points.length; index += 1) {
-        const point = points[index];
-        const next = points[(index + 1) % points.length];
+      context.moveTo(
+        (points[lastIndex] + points[0]) * 0.5,
+        (points[lastIndex + 1] + points[1]) * 0.5,
+      );
+      for (let index = 0; index < offsets.length; index += 2) {
+        const next = (index + 2) % offsets.length;
         context.quadraticCurveTo(
-          point.x,
-          point.y,
-          (point.x + next.x) * 0.5,
-          (point.y + next.y) * 0.5,
+          points[index],
+          points[index + 1],
+          (points[index] + points[next]) * 0.5,
+          (points[index + 1] + points[next + 1]) * 0.5,
         );
       }
       context.closePath();
@@ -2237,7 +2413,9 @@ export class FieldEngine {
           : 1;
     const materialEase =
       materialProgress * materialProgress * (3 - 2 * materialProgress);
-    for (const particle of this.particles) {
+    const group = this.group;
+    const cursorStage = this.stage === "pick" || this.stage === "revealed";
+    for (const particle of this.movingParticles ?? this.particles) {
       if (
         particle.alpha < 0.002 ||
         particle.state === "latent" ||
@@ -2245,14 +2423,17 @@ export class FieldEngine {
       ) {
         continue;
       }
-      const screen = particle.grouped
-        ? this.localToScreen(particle.x, particle.y)
-        : this.worldToScreen(particle.x, particle.y);
+      const screenX = particle.grouped && group
+        ? group.originX + group.translateX + particle.x * group.scale - this.cameraX
+        : particle.x - this.cameraX;
+      const screenY = particle.grouped && group
+        ? group.originY + group.translateY + particle.y * group.scale - this.cameraY
+        : particle.y - this.cameraY;
       if (
-        screen.x < -16 ||
-        screen.x > this.width + 16 ||
-        screen.y < -16 ||
-        screen.y > this.height + 16
+        screenX < -16 ||
+        screenX > this.width + 16 ||
+        screenY < -16 ||
+        screenY > this.height + 16
       ) {
         continue;
       }
@@ -2271,7 +2452,6 @@ export class FieldEngine {
           0.93 +
           Math.sin(this.lastFrameAt * 0.00072 + particle.drift * 1.7) * 0.07;
       }
-      const cursorStage = this.stage === "pick" || this.stage === "revealed";
       const revealedFollower =
         this.stage === "revealed" &&
         hashGrid(
@@ -2378,6 +2558,15 @@ export class FieldEngine {
     this.drawWashes(settleProgress, time);
     this.drawFibers(settleProgress, time);
     this.drawParticles(settleProgress);
+
+    if (
+      this.desktopPointer &&
+      this.stage === "settling" &&
+      settleElapsed > 1200 &&
+      !settleComplete
+    ) {
+      this.prepareDepositBase();
+    }
 
     if (settleComplete && !this.settledNotified) {
       this.settledNotified = true;
