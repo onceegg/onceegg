@@ -239,6 +239,7 @@ p {
   --tape-position: 18% 24%;
   --tape-surface: var(--onceegg-tape-paper);
   --tape-tilt: -0.35deg;
+  --tape-rest-opacity: 0.94;
 
   position: absolute;
   z-index: 1;
@@ -259,7 +260,7 @@ p {
   font-weight: 400;
   letter-spacing: -0.025em;
   line-height: 1.2;
-  opacity: 0.94;
+  opacity: var(--tape-rest-opacity);
   transform: translate(-50%, -50%) rotate(var(--tape-tilt));
   transform-origin: center;
   width: max-content;
@@ -318,6 +319,7 @@ p {
 .incubatorWord[data-word="ideas"] {
   --tape-surface: var(--onceegg-tape-blue);
   --tape-tilt: -0.45deg;
+  --tape-rest-opacity: 1;
 
   color: var(--onceegg-ink);
   opacity: 1;
@@ -345,6 +347,7 @@ p {
   --tape-surface: var(--onceegg-tape-warm);
   --tape-tilt: -0.2deg;
   --tape-position: 82% 17%;
+  --tape-rest-opacity: 1;
 
   color: var(--onceegg-ink);
   opacity: 1;
@@ -902,6 +905,31 @@ p {
   }
 }
 
+@media (hover: none), (pointer: coarse) {
+  /* Keep the textured tape stable while a finger moves it. */
+  .incubatorWord {
+    transition:
+      top 520ms cubic-bezier(0.16, 1, 0.3, 1),
+      left 520ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 160ms ease-out;
+  }
+
+  .incubatorWord:hover,
+  .incubatorWord.isActive,
+  .incubatorWord:focus-visible,
+  .incubatorWord.isActive:hover,
+  .incubatorWord:focus-visible:hover {
+    filter: var(--onceegg-tape-shadow);
+    opacity: var(--tape-rest-opacity);
+    transform: translate(-50%, -50%) rotate(var(--tape-tilt));
+  }
+
+  .incubatorWord.isActive,
+  .incubatorWord:focus-visible {
+    transition: color 120ms ease-out;
+  }
+}
+
 @media (max-width: 720px) {
   .page,
   .journalPage {
@@ -1015,7 +1043,8 @@ p {
   }
 
   .incubatorWord,
-  .incubatorWord.isActive {
+  .incubatorWord.isActive,
+  .incubatorWord:focus-visible {
     transition: none;
   }
 }
