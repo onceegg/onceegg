@@ -24,7 +24,7 @@
   position: absolute;
   z-index: 0;
   inset: 0;
-  background-image: url("/textures/watercolor-paper.jpg");
+  background-image: var(--onceegg-tape-texture);
   background-position: center top;
   background-repeat: repeat;
   background-size: 32rem 32rem;
