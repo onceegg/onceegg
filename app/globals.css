@@ -1,3 +1,5 @@
+@import "./tape-shadows.css";
+
 :root {
   --onceegg-background: #fefefd;
   --onceegg-paper-white: #ffffff;
@@ -905,7 +907,7 @@ p {
 }
 
 @media (hover: none), (pointer: coarse) {
-  /* Avoid WebKit drop-shadow repaint trails; use a separate box-shadow instead. */
+  /* Rasterized SVG backgrounds keep the desktop shadow without live filters. */
   .incubatorWord {
     filter: none;
     transition:
@@ -917,11 +919,11 @@ p {
   .incubatorWord::before {
     position: absolute;
     z-index: -1;
-    inset: 0.12rem;
-    border-radius: 0.08rem;
-    box-shadow:
-      0.14rem 0.2rem 0.09rem rgb(52 46 36 / 11.99%),
-      0.32rem 0.42rem 0.4rem rgb(52 46 36 / 5.71%);
+    /* Matches the padding inside the generated, transparent shadow image. */
+    inset: -24px;
+    background-image: var(--tape-shadow-image);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
     content: "";
     pointer-events: none;
   }
