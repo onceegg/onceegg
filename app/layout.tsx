@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import { Courier_Prime, Newsreader } from "next/font/google";
 import type { CSSProperties, ReactNode } from "react";
@@ -47,7 +48,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       lang="en"
       style={paperTextureStyle}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
