@@ -32,6 +32,23 @@ type GestureSegment = {
 
 type ParticleState = "latent" | "active" | "drifting" | "settled";
 
+type CursorOrbit = {
+  x: number;
+  y: number;
+  tangentX: number;
+  tangentY: number;
+};
+
+type DriftProfile = {
+  phase: number;
+  followerTempo: number;
+  mobility: number;
+  smallPresence: number;
+  pickOrbit: CursorOrbit;
+  revealedOrbit: CursorOrbit;
+  revealSelector: number;
+};
+
 type DustParticle = {
   x: number;
   y: number;
@@ -59,6 +76,8 @@ type DustParticle = {
   grouped: boolean;
   follower: boolean;
   cursorPull: number;
+  displaySize: number | null;
+  driftProfile: DriftProfile | null;
 };
 
 type FiberFragment = {
@@ -152,9 +171,7 @@ type EngineOptions = {
 const DUST_COLORS = ["76 91 88", "65 104 117", "151 113 72"];
 const FIBER_COLORS = ["88 106 103", "128 116 96", "76 101 108"];
 const WASH_COLORS = ["122 146 143", "163 139 105", "112 132 127"];
-const DUST_FILL_STYLES = DUST_COLORS.map((color) =>
-  Array.from({ length: 256 }, (_, alpha) => `rgb(${color} / ${alpha / 255})`),
-);
+const DUST_SOLID_STYLES = DUST_COLORS.map((color) => `rgb(${color})`);
 const DUST_VISIBILITY = 2.58;
 const FIBER_VISIBILITY = 1.18;
 const WORLD_SCALE = 2;
@@ -656,6 +673,8 @@ export class FieldEngine {
         grouped: false,
         follower: false,
         cursorPull: 0,
+        displaySize: null,
+        driftProfile: null,
       };
     });
   }
@@ -1048,6 +1067,8 @@ export class FieldEngine {
 
       particle.state = "active";
       particle.grouped = true;
+      particle.displaySize = null;
+      particle.driftProfile = null;
       particle.x = localX;
       particle.y = localY;
       particle.density = densityNoise(localX + group.originX, localY + group.originY, this.seed);
@@ -1681,6 +1702,59 @@ export class FieldEngine {
     return orbit;
   }
 
+  private getDriftProfile(particle: DustParticle): DriftProfile {
+    if (particle.driftProfile) return particle.driftProfile;
+
+    const cursorOrbit = (afterReveal: boolean): CursorOrbit => {
+      const angle =
+        hashGrid(
+          Math.floor(particle.drift * 17000),
+          afterReveal ? 373 : 311,
+          this.seed ^ 0x27d4eb2d,
+        ) *
+        Math.PI *
+        2;
+      const radius =
+        3 +
+        Math.pow(
+          hashGrid(
+            Math.floor(particle.drift * 19000),
+            afterReveal ? 397 : 331,
+            this.seed ^ 0x85ebca6b,
+          ),
+          1.45,
+        ) *
+          (afterReveal ? 19 : 16);
+      return {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+        tangentX: Math.cos(angle + Math.PI * 0.5),
+        tangentY: Math.sin(angle + Math.PI * 0.5),
+      };
+    };
+
+    // These depend on the particle's settled identity, not the cursor or frame.
+    // Retain the original arithmetic so caching does not change its motion.
+    particle.driftProfile = {
+      phase:
+        particle.drift * 0.19 +
+        particle.restX * 0.0021 +
+        particle.restY * 0.0013,
+      followerTempo: hashGrid(
+        Math.floor(particle.drift * 41000), 337, this.seed ^ 0xc2b2ae35,
+      ),
+      mobility:
+        0.78 +
+        hashGrid(Math.floor(particle.drift * 43000), 353, this.seed ^ 0x27d4eb2d) *
+          0.54,
+      smallPresence: clamp((1.25 - particle.size) / 0.85, 0, 1),
+      pickOrbit: cursorOrbit(false),
+      revealedOrbit: cursorOrbit(true),
+      revealSelector: hashGrid(Math.floor(particle.drift * 12000), 137, this.seed),
+    };
+    return particle.driftProfile;
+  }
+
   private updateDriftingParticle(
     particle: DustParticle,
     deltaSeconds: number,
@@ -1690,38 +1764,53 @@ export class FieldEngine {
   ) {
     const time = this.lastFrameAt;
     const structure = clamp(particle.imprint / 1.2, 0, 1);
-    const flowAngle = this.localFlowAngle(particle.restX, particle.restY, time);
-    const flowX = Math.cos(flowAngle);
-    const flowY = Math.sin(flowAngle);
-    const phase =
-      particle.drift * 0.19 +
-      particle.restX * 0.0021 +
-      particle.restY * 0.0013;
-    const followerTempo = hashGrid(
-      Math.floor(particle.drift * 41000),
-      337,
-      this.seed ^ 0xc2b2ae35,
-    );
+    const profile = this.getDriftProfile(particle);
+    const {
+      phase, followerTempo, mobility, smallPresence: smallParticlePresence,
+    } = profile;
     const persistentMotion =
       this.material === "living" &&
       this.stage === "revealed" &&
       !this.reducedMotion;
-    const mobility =
-      0.78 +
-      hashGrid(
-        Math.floor(particle.drift * 43000),
-        353,
-        this.seed ^ 0x27d4eb2d,
-      ) *
-        0.54;
-    const smallParticlePresence = clamp(
-      (1.25 - particle.size) / 0.85,
-      0,
-      1,
-    );
     const driftTime = time * (0.76 + followerTempo * 0.52);
-    let targetX: number;
-    let targetY: number;
+    const cursorStage = this.stage === "pick" || this.stage === "revealed";
+    const afterReveal = this.stage === "revealed";
+    const cursorRadius = afterReveal
+      ? 132 + particle.depth * 20
+      : 150 + particle.depth * 22;
+    const cursorEligible =
+      this.material === "living" &&
+      particle.follower &&
+      (this.stage === "pick" || (afterReveal && followerTempo < 0.84));
+    let cursorProximity = 0;
+    if (this.gatherPoint && cursorStage && cursorEligible) {
+      const dx = particle.x - this.gatherPoint.x;
+      const dy = particle.y - this.gatherPoint.y;
+      // Outside this square the original circular proximity is also zero.
+      if (Math.abs(dx) < cursorRadius && Math.abs(dy) < cursorRadius) {
+        cursorProximity = clamp(1 - Math.hypot(dx, dy) / cursorRadius, 0, 1);
+      }
+    }
+    const cursorNearby = cursorProximity > 0;
+    particle.cursorPull = lerp(
+      particle.cursorPull,
+      cursorNearby ? Math.pow(cursorProximity, 0.72) : 0,
+      cursorNearby ? cursorPullNear : cursorPullFar,
+    );
+    const followsCursor =
+      this.gatherPoint !== null &&
+      cursorEligible &&
+      (cursorProximity > 0 || particle.cursorPull > 0.025);
+    // A captured particle's free-drift target is immediately replaced below.
+    // Only rotating particles still need the flow direction while captured.
+    const needsFlow = !followsCursor || particle.form !== 0;
+    const flowAngle = needsFlow
+      ? this.localFlowAngle(particle.restX, particle.restY, time)
+      : 0;
+    const flowX = needsFlow ? Math.cos(flowAngle) : 0;
+    const flowY = needsFlow ? Math.sin(flowAngle) : 0;
+    let targetX = particle.x;
+    let targetY = particle.y;
 
     if (this.material === "pigment") {
       const travel = 1.2 + structure * 2.2 + particle.depth * 1.4;
@@ -1731,7 +1820,7 @@ export class FieldEngine {
       targetY =
         particle.restY +
         (Math.cos(time * 0.000047 + phase * 1.07) * 0.42 + flowY * 0.58) * travel;
-    } else {
+    } else if (!followsCursor) {
       const { anchorX, anchorY, offsetX, offsetY, tangentX, tangentY } =
         this.getParticleOrbit(particle);
       const breath = this.reducedMotion
@@ -1762,61 +1851,13 @@ export class FieldEngine {
         tangentY * wander +
         flowY * flowTravel -
         flowX * crossWander;
-      particle.alpha *=
-        0.998 + Math.sin(time * 0.00072 + phase) * 0.002;
+    }
+    if (this.material === "living") {
+      particle.alpha *= 0.998 + Math.sin(time * 0.00072 + phase) * 0.002;
     }
 
-    const cursorStage = this.stage === "pick" || this.stage === "revealed";
-    const afterReveal = this.stage === "revealed";
-    const cursorRadius = afterReveal
-      ? 132 + particle.depth * 20
-      : 150 + particle.depth * 22;
-    const cursorDistance =
-      this.gatherPoint && cursorStage
-        ? Math.hypot(
-            particle.x - this.gatherPoint.x,
-            particle.y - this.gatherPoint.y,
-          )
-        : Number.POSITIVE_INFINITY;
-    const cursorProximity = clamp(1 - cursorDistance / cursorRadius, 0, 1);
-    const followsRevealedCursor = afterReveal && followerTempo < 0.84;
-    const cursorEligible =
-      this.material === "living" &&
-      particle.follower &&
-      (this.stage === "pick" || followsRevealedCursor);
-    const cursorNearby =
-      this.gatherPoint !== null && cursorEligible && cursorProximity > 0;
-    const pullResponse = cursorNearby ? cursorPullNear : cursorPullFar;
-    particle.cursorPull = lerp(
-      particle.cursorPull,
-      cursorNearby ? Math.pow(cursorProximity, 0.72) : 0,
-      pullResponse,
-    );
-    const followsCursor =
-      this.gatherPoint !== null &&
-      cursorEligible &&
-      (cursorProximity > 0 || particle.cursorPull > 0.025);
-
     if (this.gatherPoint && followsCursor) {
-      const captureAngle =
-        hashGrid(
-          Math.floor(particle.drift * 17000),
-          afterReveal ? 373 : 311,
-          this.seed ^ 0x27d4eb2d,
-        ) *
-        Math.PI *
-        2;
-      const captureRadius =
-        3 +
-        Math.pow(
-          hashGrid(
-            Math.floor(particle.drift * 19000),
-            afterReveal ? 397 : 331,
-            this.seed ^ 0x85ebca6b,
-          ),
-          1.45,
-        ) *
-          (afterReveal ? 19 : 16);
+      const orbit = afterReveal ? profile.revealedOrbit : profile.pickOrbit;
       const searchAngle =
         time * (0.0001 + followerTempo * 0.000045) + phase * 0.83;
       const tangentSway =
@@ -1824,13 +1865,9 @@ export class FieldEngine {
         (1.8 + particle.depth * 2.6) *
         (0.45 + particle.cursorPull * 0.55);
       const cursorTargetX =
-        this.gatherPoint.x +
-        Math.cos(captureAngle) * captureRadius +
-        Math.cos(captureAngle + Math.PI * 0.5) * tangentSway;
+        this.gatherPoint.x + orbit.x + orbit.tangentX * tangentSway;
       const cursorTargetY =
-        this.gatherPoint.y +
-        Math.sin(captureAngle) * captureRadius +
-        Math.sin(captureAngle + Math.PI * 0.5) * tangentSway;
+        this.gatherPoint.y + orbit.y + orbit.tangentY * tangentSway;
       targetX = cursorTargetX;
       targetY = cursorTargetY;
       particle.alpha = Math.min(
@@ -1846,18 +1883,18 @@ export class FieldEngine {
       );
     }
 
-    if (this.revealPoint && this.stage === "revealed" && !followsCursor) {
+    if (
+      this.revealPoint &&
+      this.stage === "revealed" &&
+      !followsCursor &&
+      !this.reducedMotion &&
+      revealElapsed < 1380
+    ) {
       const dx = this.revealPoint.x - particle.x;
       const dy = this.revealPoint.y - particle.y;
       const distance = Math.hypot(dx, dy);
-      const selector = hashGrid(
-        Math.floor(particle.drift * 12000),
-        137,
-        this.seed,
-      );
-      const tighten = this.reducedMotion
-        ? 0
-        : clamp(1 - revealElapsed / 1380, 0, 1);
+      const selector = profile.revealSelector;
+      const tighten = clamp(1 - revealElapsed / 1380, 0, 1);
       if (distance < 188 && selector < 0.56) {
         const destination = this.materialGatherTarget(
           particle,
@@ -1949,6 +1986,8 @@ export class FieldEngine {
     particle.grouped = false;
     particle.follower = false;
     particle.cursorPull = 0;
+    particle.displaySize = null;
+    particle.driftProfile = null;
   }
 
   private commitDeposit() {
@@ -1984,6 +2023,7 @@ export class FieldEngine {
         clamp((particle.size - 1.8) / 1.2, 0, 1) * 0.1;
       particle.restX = particle.x;
       particle.restY = particle.y;
+      particle.driftProfile = null;
       particle.vx *= 0.12;
       particle.vy *= 0.12;
       particle.cursorPull = 0;
@@ -2014,6 +2054,7 @@ export class FieldEngine {
       particle.state = "settled";
       particle.alpha = 0;
     }
+    context.globalAlpha = 1;
     this.depositCommitted = true;
     this.refreshMovingParticles();
   }
@@ -2192,22 +2233,29 @@ export class FieldEngine {
     y: number,
     alpha: number,
   ) {
-    const structure = clamp(particle.imprint / 1.2, 0, 1);
-    const mineralPeak =
-      clamp((particle.mineral - 0.91) / 0.09, 0, 1) * structure;
-    const displaySize =
-      particle.size *
-      (0.88 + particle.depth * 0.24) *
-      (1 + mineralPeak * 0.14) *
-      (this.material === "living" ? 1.14 : 1);
-    // Reuse the desktop canvas's 8-bit CSS colors instead of parsing thousands
-    // of new strings per frame. Keep exact input near a float-rounding boundary.
+    if (particle.displaySize === null) {
+      const structure = clamp(particle.imprint / 1.2, 0, 1);
+      const mineralPeak = clamp((particle.mineral - 0.91) / 0.09, 0, 1) * structure;
+      particle.displaySize =
+        particle.size *
+        (0.88 + particle.depth * 0.24) *
+        (1 + mineralPeak * 0.14) *
+        (this.material === "living" ? 1.14 : 1);
+    }
+    const displaySize = particle.displaySize;
+    // Keep the desktop's existing 8-bit alpha, but vary it numerically instead
+    // of making Canvas parse a different CSS color for nearly every particle.
+    // Preserve CSS parsing at rounding boundaries and on touch devices.
     const alphaByte = alpha * 255;
     const nearRoundingBoundary =
       Math.abs(alphaByte - Math.floor(alphaByte) - 0.5) < 0.0001;
-    context.fillStyle = this.desktopPointer && !nearRoundingBoundary
-      ? DUST_FILL_STYLES[particle.color][Math.round(alphaByte)]
-      : `rgb(${DUST_COLORS[particle.color]} / ${alpha})`;
+    if (this.desktopPointer && !nearRoundingBoundary) {
+      context.fillStyle = DUST_SOLID_STYLES[particle.color];
+      context.globalAlpha = Math.round(alphaByte) / 255;
+    } else {
+      context.globalAlpha = 1;
+      context.fillStyle = `rgb(${DUST_COLORS[particle.color]} / ${alpha})`;
+    }
 
     if (this.material === "living") {
       if (particle.form === 0 && displaySize < 1.15) {
@@ -2454,11 +2502,7 @@ export class FieldEngine {
       }
       const revealedFollower =
         this.stage === "revealed" &&
-        hashGrid(
-          Math.floor(particle.drift * 41000),
-          337,
-          this.seed ^ 0xc2b2ae35,
-        ) < 0.84;
+        this.getDriftProfile(particle).followerTempo < 0.84;
       if (
         this.gatherPoint &&
         cursorStage &&
@@ -2495,6 +2539,8 @@ export class FieldEngine {
         : particle.y;
       this.drawParticleShape(context, particle, drawX, drawY, alpha);
     }
+    // Other layers (and the next frame) must not inherit a particle's alpha.
+    context.globalAlpha = 1;
   }
 
   private render = (time: number) => {
