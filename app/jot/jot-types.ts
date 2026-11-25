@@ -26,8 +26,6 @@ export const JOT_COLORS = [
 
 export type JotColor = (typeof JOT_COLORS)[number];
 
-export type JotLane = "left" | "right";
-
 export type JotNote = {
   id: string;
   text: string;
@@ -38,20 +36,26 @@ export type JotNote = {
   updatedAt: number;
 };
 
+export type CompletionRecord = Pick<JotNote, "text" | "color"> & {
+  noteId: string;
+  completedAt: number;
+};
+
 export type JotState = {
+  history: CompletionRecord[];
   notes: JotNote[];
   nextColorIndex: number;
 };
 
 export const JOT_PALETTE: Record<JotColor, { surface: string; ink: string }> = {
   saffron: { surface: "#EACF82", ink: "#241F18" },
-  cornflower: { surface: "#A9C7E8", ink: "#1D2228" },
-  coral: { surface: "#E7AEA5", ink: "#261D1A" },
-  sage: { surface: "#B7CBAA", ink: "#1F241C" },
+  cornflower: { surface: "#BAD1EA", ink: "#1D2228" },
+  coral: { surface: "#EFC5BC", ink: "#261D1A" },
+  sage: { surface: "#C7D3BC", ink: "#1F241C" },
   violet: { surface: "#C5B5DA", ink: "#211D27" },
   apricot: { surface: "#EDC096", ink: "#261F19" },
-  teal: { surface: "#A3D0CA", ink: "#1B2422" },
-  rose: { surface: "#DDB4C1", ink: "#261D21" },
+  teal: { surface: "#BCDAD7", ink: "#1B2422" },
+  rose: { surface: "#E8BFC8", ink: "#261D21" },
   lime: { surface: "#CEDB9D", ink: "#22251A" },
   indigo: { surface: "#AEB6DA", ink: "#1D2028" },
   terra: { surface: "#D5AE9E", ink: "#251E1A" },
@@ -71,5 +75,6 @@ export const JOT_PALETTE: Record<JotColor, { surface: string; ink: string }> = {
 
 export const EMPTY_JOT_STATE: JotState = {
   notes: [],
+  history: [],
   nextColorIndex: 0,
 };

@@ -32,11 +32,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F2EFE7" },
-    { media: "(prefers-color-scheme: dark)", color: "#121212" },
-  ],
+  colorScheme: "light",
+  themeColor: "#f4efe7",
 };
 
 export default function JotPage() {
