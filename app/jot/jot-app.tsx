@@ -2,1029 +2,245 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ChangeEvent,
-  type CompositionEvent,
-  type KeyboardEvent,
-  type PointerEvent,
-} from "react";
-
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { DEFAULT_JOT_PREFERENCES, loadJotPreferences, loadJotState, saveJotPreferences, saveJotState, STORAGE_KEY } from "./jot-storage";
+import { EMPTY_JOT_STATE, JOT_COLORS, JOT_PALETTE, type JotNote, type JotState } from "./jot-types";
+import { completeNote, reopenNote, reorderPending } from "./jot-order";
+import { TapeNote } from "./tape-note";
 import styles from "./jot.module.css";
-import {
-  DEFAULT_JOT_PREFERENCES,
-  loadJotPreferences,
-  loadJotState,
-  saveJotPreferences,
-  saveJotState,
-  type JotPreferences,
-} from "./jot-storage";
-import {
-  EMPTY_JOT_STATE,
-  JOT_COLORS,
-  JOT_PALETTE,
-  type JotLane,
-  type JotNote,
-  type JotState,
-} from "./jot-types";
 
-const CANVAS_DOUBLE_TAP_MS = 280;
-const NOTE_DOUBLE_TAP_MS = 235;
-const REMOVE_DISTANCE = 72;
-const REMOVE_VELOCITY = -0.45;
-const VELOCITY_SAMPLE_MAX_AGE = 80;
-const UNDO_DURATION_MS = 4200;
-const DEVICE_NOTICE_DURATION_MS = 4600;
-const TWO_COLUMN_BREAKPOINT = 1024;
-const FONT_SIZE = 18;
-const FONT_TRACKING_EM = 0.04;
-
-type Point = [number, number];
-
-type CanvasPointer = {
-  pointerId: number;
-  x: number;
-  y: number;
-  moved: boolean;
-};
-
-type NotePointer = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  lastX: number;
-  lastAt: number;
-  velocityX: number;
-  moved: boolean;
-  swiping: boolean;
-};
-
-type RemovedNote = {
-  note: JotNote;
-  index: number;
-};
-
-type TapeProperties = CSSProperties & {
-  "--jot-paper-color": string;
-  "--jot-ink-color": string;
-  "--jot-tape-width": string;
-  "--jot-text-inset": string;
-  "--jot-paper-shape": string;
-  "--jot-paper-x": string;
-  "--jot-paper-y": string;
-  "--jot-tape-offset": string;
-  "--jot-tape-tilt": string;
-  "--jot-swipe-x": string;
-};
-
-type NoteSlotProperties = CSSProperties & {
-  "--jot-note-row": string;
-};
-
-function hashString(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function seededRandom(seed: number) {
-  let state = seed || 1;
-  return () => {
-    state = Math.imul(state ^ (state >>> 15), 1 | state);
-    state ^= state + Math.imul(state ^ (state >>> 7), 61 | state);
-    return ((state ^ (state >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function makeHorizontalEdge(
-  random: () => number,
-  startX: number,
-  endX: number,
-  baseY: number,
-) {
-  const points: Point[] = [[startX, baseY + (random() - 0.5) * 1.2]];
-  let x = startX;
-  let drift = (random() - 0.5) * 1.4;
-
-  while (x < endX - 8) {
-    x = Math.min(endX, x + 9 + random() * 17);
-    drift = clamp(drift + (random() - 0.5) * 1.7, -2.5, 2.5);
-    points.push([x, baseY + drift]);
-  }
-
-  return points;
-}
-
-function makeVerticalEdge(
-  random: () => number,
-  startY: number,
-  endY: number,
-  baseX: number,
-) {
-  const points: Point[] = [[baseX + (random() - 0.5) * 1.6, startY]];
-  let y = startY;
-  let drift = (random() - 0.5) * 2.2;
-
-  while (y < endY - 3) {
-    y = Math.min(endY, y + 3.6 + random() * 5.4);
-    drift = clamp(drift + (random() - 0.5) * 2.6, -4.4, 4.4);
-    const notch = random() < 0.24 ? (random() - 0.5) * 5.2 : 0;
-    points.push([baseX + drift + notch, y]);
-  }
-
-  return points;
-}
-
-function makeTornPolygon(seed: number) {
-  const random = seededRandom(seed);
-  const top = makeHorizontalEdge(random, 10, 350, 5.3);
-  const right = makeVerticalEdge(random, top.at(-1)?.[1] ?? 5.3, 66.7, 350);
-  const bottom = makeHorizontalEdge(random, 10, 350, 66.7).reverse();
-  const left = makeVerticalEdge(
-    random,
-    top[0][1],
-    bottom.at(-1)?.[1] ?? 66.7,
-    10,
-  ).reverse();
-
-  return [...top, ...right, ...bottom, ...left]
-    .map(([x, y]) => `${((x / 360) * 100).toFixed(2)}% ${((y / 72) * 100).toFixed(2)}%`)
-    .join(", ");
-}
-
-function getTextUnits(value: string) {
-  return Array.from(value).reduce((total, character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    if (/\s/.test(character)) return total + 0.5;
-    if (codePoint <= 0x7f) return total + 0.6;
-    if (codePoint > 0xffff) return total + 1.16;
-    return total + 1;
-  }, 0);
-}
-
-function fitText(value: string, maxUnits: number) {
-  let fitted = "";
-  for (const character of Array.from(value.replace(/[\r\n]/g, ""))) {
-    const nextValue = fitted + character;
-    if (getTextUnits(nextValue) > maxUnits) break;
-    fitted = nextValue;
-  }
-  return fitted;
-}
-
-function getNoteId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `jot-${crypto.randomUUID()}`;
-  }
-  return `jot-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function sortNotes(notes: JotNote[]) {
-  return [...notes].sort((first, second) => {
-    if (first.isCompleted !== second.isCompleted) {
-      return first.isCompleted ? 1 : -1;
-    }
-    if (first.isCompleted) {
-      return (first.completedAt ?? first.updatedAt) - (second.completedAt ?? second.updatedAt);
-    }
-    return first.createdAt - second.createdAt;
-  });
-}
-
-type TapeNoteProps = {
-  note: JotNote;
-  lane: JotLane;
-  viewportWidth: number;
-  laneRow: number;
-  isEditing: boolean;
-  isNew: boolean;
-  onEdit: () => void;
-  onChange: (text: string) => void;
-  onFinishEditing: () => void;
-  onToggle: () => void;
-  onRemove: () => void;
-  onKeyboardRemove: () => void;
-  onInteractionStart: () => void;
-  onFocus: () => void;
-  onExit: () => void;
-};
-
-function TapeNote({
-  note,
-  lane,
-  viewportWidth,
-  laneRow,
-  isEditing,
-  isNew,
-  onEdit,
-  onChange,
-  onFinishEditing,
-  onToggle,
-  onRemove,
-  onKeyboardRemove,
-  onInteractionStart,
-  onFocus,
-  onExit,
-}: TapeNoteProps) {
-  const seed = useMemo(() => hashString(note.id), [note.id]);
-  const naturalWidthRatio = 0.838 + ((seed >>> 4) % 27) / 1000;
-  const desktopMaxWidth = 600 + ((seed >>> 21) % 31);
-  const tapeWidth =
-    viewportWidth >= TWO_COLUMN_BREAKPOINT
-      ? Math.min(viewportWidth * naturalWidthRatio * 0.47, desktopMaxWidth)
-      : viewportWidth * naturalWidthRatio * (viewportWidth > 720 ? 5 / 6 : 1);
-  const textInset = clamp(tapeWidth * 0.06, 32, 64);
-  const maxTextUnits = Math.max(
-    4,
-    Math.floor(
-      (tapeWidth - textInset * 2) /
-        (FONT_SIZE * (1 + FONT_TRACKING_EM)),
-    ),
-  );
-  const inputRef = useRef<HTMLInputElement>(null);
-  const pointerRef = useRef<NotePointer | null>(null);
-  const tapTimerRef = useRef<number | null>(null);
-  const lastTapAtRef = useRef(0);
-  const removeTimerRef = useRef<number | null>(null);
-  const isComposingRef = useRef(false);
-  const [translationX, setTranslationX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-
-  const resetSwipe = useCallback(() => {
-    pointerRef.current = null;
-    setIsDragging(false);
-    setTranslationX(0);
-  }, []);
-
-  const resetInterruptedSwipe = useCallback(() => {
-    if (pointerRef.current === null) return;
-    resetSwipe();
-  }, [resetSwipe]);
-
-  useEffect(() => {
-    if (!isEditing) return;
-    const frame = window.requestAnimationFrame(() => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [isEditing]);
-
-  useEffect(
-    () => () => {
-      if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
-      if (removeTimerRef.current !== null) window.clearTimeout(removeTimerRef.current);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") resetInterruptedSwipe();
-    };
-
-    window.addEventListener("blur", resetInterruptedSwipe);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("blur", resetInterruptedSwipe);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [resetInterruptedSwipe]);
-
-  function handleTextChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextValue = event.currentTarget.value;
-    onChange(isComposingRef.current ? nextValue.replace(/[\r\n]/g, "") : fitText(nextValue, maxTextUnits));
-  }
-
-  function handleCompositionEnd(event: CompositionEvent<HTMLInputElement>) {
-    isComposingRef.current = false;
-    onChange(fitText(event.currentTarget.value, maxTextUnits));
-  }
-
-  function beginPointer(event: PointerEvent<HTMLDivElement>) {
-    if (isEditing || isRemoving || event.button !== 0) return;
-    event.stopPropagation();
-
-    const stalePointer = pointerRef.current;
-    if (stalePointer && event.currentTarget.hasPointerCapture(stalePointer.pointerId)) {
-      event.currentTarget.releasePointerCapture(stalePointer.pointerId);
-    }
-    resetSwipe();
-    if (tapTimerRef.current !== null) {
-      window.clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
-    }
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    onInteractionStart();
-    pointerRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastAt: performance.now(),
-      velocityX: 0,
-      moved: false,
-      swiping: false,
-    };
-    setIsDragging(true);
-  }
-
-  function movePointer(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pointerRef.current;
-    if (!pointer || pointer.pointerId !== event.pointerId) return;
-    event.stopPropagation();
-
-    const deltaX = event.clientX - pointer.startX;
-    const deltaY = event.clientY - pointer.startY;
-    const now = performance.now();
-    const sampleElapsed = Math.max(1, now - pointer.lastAt);
-    const sampleVelocityX = (event.clientX - pointer.lastX) / sampleElapsed;
-    if (Math.hypot(deltaX, deltaY) > 7) pointer.moved = true;
-    if (!pointer.swiping && deltaX < -10 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-      pointer.swiping = true;
-    }
-    pointer.velocityX = pointer.velocityX * 0.3 + sampleVelocityX * 0.7;
-    pointer.lastX = event.clientX;
-    pointer.lastAt = now;
-
-    if (pointer.swiping) setTranslationX(Math.min(0, deltaX));
-  }
-
-  function cancelPointer(event: PointerEvent<HTMLDivElement>) {
-    if (pointerRef.current?.pointerId !== event.pointerId) return;
-    resetSwipe();
-  }
-
-  function finishPointer(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pointerRef.current;
-    if (!pointer || pointer.pointerId !== event.pointerId) return;
-    event.stopPropagation();
-
-    pointerRef.current = null;
-    setIsDragging(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
-    const deltaX = event.clientX - pointer.startX;
-    const sampleAge = performance.now() - pointer.lastAt;
-    const velocityX = sampleAge <= VELOCITY_SAMPLE_MAX_AGE ? pointer.velocityX : 0;
-    if (pointer.swiping) {
-      if (deltaX < -REMOVE_DISTANCE || velocityX < REMOVE_VELOCITY) {
-        setIsRemoving(true);
-        setTranslationX(-Math.max(viewportWidth * 1.2, 460));
-        removeTimerRef.current = window.setTimeout(
-          onRemove,
-          prefersReducedMotion() ? 0 : 190,
-        );
-      } else {
-        setTranslationX(0);
-      }
-      return;
-    }
-
-    if (pointer.moved) return;
-    const now = Date.now();
-    if (now - lastTapAtRef.current <= NOTE_DOUBLE_TAP_MS) {
-      lastTapAtRef.current = 0;
-      if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
-      onToggle();
-      return;
-    }
-
-    lastTapAtRef.current = now;
-    tapTimerRef.current = window.setTimeout(() => {
-      lastTapAtRef.current = 0;
-      tapTimerRef.current = null;
-      onEdit();
-    }, NOTE_DOUBLE_TAP_MS);
-  }
-
-  function handleKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      onEdit();
-    } else if (event.key === " ") {
-      event.preventDefault();
-      event.stopPropagation();
-      onToggle();
-    } else if (event.key === "Delete" || event.key === "Backspace") {
-      event.preventDefault();
-      event.stopPropagation();
-      onKeyboardRemove();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      onExit();
-    }
-  }
-
-  const palette = JOT_PALETTE[note.color];
-  const tapeStyle: TapeProperties = {
-    "--jot-paper-color": note.isCompleted ? "#BDB8AF" : palette.surface,
-    "--jot-ink-color": note.isCompleted ? "#494640" : palette.ink,
-    "--jot-tape-width": `${tapeWidth.toFixed(1)}px`,
-    "--jot-text-inset": `${textInset.toFixed(1)}px`,
-    "--jot-paper-shape": `polygon(${makeTornPolygon(seed)})`,
-    "--jot-paper-x": `${-((seed >>> 5) % 58)}px`,
-    "--jot-paper-y": `${-((seed >>> 13) % 12)}px`,
-    "--jot-tape-offset": `${((seed >>> 10) % 11) - 5}px`,
-    "--jot-tape-tilt": `${(((seed >>> 17) % 13) - 6) / 22}deg`,
-    "--jot-swipe-x": `${translationX}px`,
-  };
-
-  return (
-    <div
-      className={styles.noteSlot}
-      data-note-id={note.id}
-      data-lane={lane}
-      data-completed={note.isCompleted || undefined}
-      style={{ "--jot-note-row": String(laneRow) } as NoteSlotProperties}
-    >
-      <div
-        className={[
-          styles.tape,
-          note.isCompleted ? styles.isCompleted : "",
-          isDragging ? styles.isDragging : "",
-          isRemoving ? styles.isRemoving : "",
-          isNew ? styles.isNew : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        data-jot-note
-        data-note-focus-target
-        role={isEditing ? undefined : "button"}
-        tabIndex={isEditing ? -1 : 0}
-        aria-pressed={isEditing ? undefined : note.isCompleted}
-        aria-keyshortcuts={isEditing ? undefined : "Enter Space Delete Backspace Escape"}
-        aria-label={
-          isEditing
-            ? undefined
-            : `${note.text || "空白便签"}，${note.isCompleted ? "已完成" : "未完成"}`
-        }
-        style={tapeStyle}
-        onFocus={onFocus}
-        onKeyDown={isEditing ? undefined : handleKeyboard}
-        onLostPointerCapture={cancelPointer}
-        onPointerCancel={cancelPointer}
-        onPointerDown={beginPointer}
-        onPointerMove={movePointer}
-        onPointerUp={finishPointer}
-      >
-        <div className={styles.paper}>
-          <span className={styles.paperTexture} aria-hidden="true" />
-          <span className={styles.paperGrain} aria-hidden="true" />
-
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              className={styles.noteInput}
-              value={note.text}
-              aria-label={note.isCompleted ? "编辑已完成便签" : "编辑便签"}
-              autoComplete="off"
-              enterKeyHint="done"
-              spellCheck={false}
-              onBlur={onFinishEditing}
-              onChange={handleTextChange}
-              onClick={(event) => event.stopPropagation()}
-              onCompositionEnd={handleCompositionEnd}
-              onCompositionStart={() => {
-                isComposingRef.current = true;
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === "Escape") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.currentTarget.blur();
-                }
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-            />
-          ) : (
-            <span className={styles.noteText}>{note.text}</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+const dateFormat = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+type RemovedNote = { note: JotNote; index: number; previous?: string; next?: string };
 
 export function JotApp() {
   const router = useRouter();
   const [state, setState] = useState<JotState>(EMPTY_JOT_STATE);
-  const [isReady, setIsReady] = useState(false);
-  const [storageError, setStorageError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
-  const [newNoteId, setNewNoteId] = useState<string | null>(null);
-  const [removedNote, setRemovedNote] = useState<RemovedNote | null>(null);
-  const [showDeviceNotice, setShowDeviceNotice] = useState(false);
-  const [showGestureHint, setShowGestureHint] = useState(false);
-  const [announcement, setAnnouncement] = useState({ message: "", sequence: 0 });
-  const [viewportWidth, setViewportWidth] = useState(390);
-  const stateRef = useRef<JotState>(EMPTY_JOT_STATE);
-  const preferencesRef = useRef<JotPreferences>(DEFAULT_JOT_PREFERENCES);
-  const announcementSequenceRef = useRef(0);
-  const canvasPointerRef = useRef<CanvasPointer | null>(null);
-  const lastCanvasTapAtRef = useRef(0);
-  const undoTimerRef = useRef<number | null>(null);
-  const deviceNoticeTimerRef = useRef<number | null>(null);
-  const mainRef = useRef<HTMLElement>(null);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [newId, setNewId] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<RemovedNote | null>(null);
+  const [notice, setNotice] = useState(false);
+  const [hint, setHint] = useState(false);
+  const [message, setMessage] = useState("");
+  const scroller = useRef<HTMLElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const prefs = useRef(DEFAULT_JOT_PREFERENCES);
+  const lastTap = useRef(0);
+  const contact = useRef<{ id: number; x: number; y: number } | null>(null);
 
-  const updateState = useCallback((updater: (current: JotState) => JotState) => {
-    const nextState = updater(stateRef.current);
-    stateRef.current = nextState;
-    setState(nextState);
-  }, []);
-
-  const announce = useCallback((message: string) => {
-    announcementSequenceRef.current += 1;
-    setAnnouncement({ message, sequence: announcementSequenceRef.current });
-  }, []);
-
-  const rememberPreference = useCallback((key: keyof JotPreferences) => {
-    if (preferencesRef.current[key]) return;
-    const nextPreferences = { ...preferencesRef.current, [key]: true };
-    preferencesRef.current = nextPreferences;
-    try {
-      saveJotPreferences(nextPreferences);
-    } catch (error) {
-      setStorageError(error instanceof Error ? error.message : "使用提示没有成功保存");
-    }
-  }, []);
-
-  const dismissGestureHint = useCallback(() => {
-    setShowGestureHint(false);
-  }, []);
-
-  const focusNote = useCallback((id: string | null) => {
-    window.requestAnimationFrame(() => {
-      if (!id) {
-        mainRef.current?.focus();
-        return;
-      }
-      document
-        .querySelector<HTMLElement>(
-          `[data-note-id="${id}"] [data-note-focus-target]`,
-        )
-        ?.focus();
-    });
+  const load = useCallback(() => {
+    try { setState(loadJotState()); setReady(true); setError(""); }
+    catch { setReady(false); setError("本地数据读取失败，已保留原始记录。"); }
   }, []);
 
   useEffect(() => {
+    function sync(event: StorageEvent) { if (event.key === STORAGE_KEY || event.key === null) load(); }
     const timer = window.setTimeout(() => {
+      load();
       try {
-        const loadedState = loadJotState();
-        stateRef.current = loadedState;
-        setState(loadedState);
-      } catch (error) {
-        setStorageError(error instanceof Error ? error.message : "本地便签没有成功打开");
-      }
-
-      try {
-        const preferences = loadJotPreferences();
-        preferencesRef.current = preferences;
-        if (!preferences.deviceNoticeSeen) {
-          setShowDeviceNotice(true);
-          rememberPreference("deviceNoticeSeen");
-          deviceNoticeTimerRef.current = window.setTimeout(
-            () => setShowDeviceNotice(false),
-            DEVICE_NOTICE_DURATION_MS,
-          );
+        prefs.current = loadJotPreferences();
+        if (!prefs.current.deviceNoticeSeen) {
+          setNotice(true);
+          prefs.current = { ...prefs.current, deviceNoticeSeen: true };
+          saveJotPreferences(prefs.current);
         }
-      } catch (error) {
-        setStorageError(error instanceof Error ? error.message : "使用提示没有成功打开");
-      }
-
-      setIsReady(true);
+      } catch { /* Hints are optional when browser storage is unavailable. */ }
     }, 0);
+    window.addEventListener("storage", sync);
+    return () => { window.clearTimeout(timer); window.removeEventListener("storage", sync); };
+  }, [load]);
 
-    return () => window.clearTimeout(timer);
-  }, [rememberPreference]);
-
-  useEffect(
-    () => () => {
-      if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
-      if (deviceNoticeTimerRef.current !== null) {
-        window.clearTimeout(deviceNoticeTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
-    updateViewportWidth();
-    window.addEventListener("resize", updateViewportWidth);
-    return () => window.removeEventListener("resize", updateViewportWidth);
-  }, []);
-
-  useEffect(() => {
-    if (!isReady) return;
-    let statusTimer: number;
+  // Read the latest saved list before each change. Notes and their history share one write.
+  const commit = useCallback((change: (current: JotState) => JotState) => {
+    if (!ready) return false;
+    let current: JotState;
+    try { current = loadJotState(); }
+    catch { setReady(false); setError("本地数据读取失败，已保留原始记录。"); return false; }
+    const next = change(current);
     try {
-      saveJotState(state);
-      statusTimer = window.setTimeout(() => setStorageError(null), 0);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "便签没有成功保存";
-      statusTimer = window.setTimeout(() => setStorageError(message), 0);
-    }
-    return () => window.clearTimeout(statusTimer);
-  }, [isReady, state]);
+      if (next !== current) saveJotState(next);
+      setState(next); setError(""); return true;
+    } catch { setError("本次更改未能保存，请重试。"); return false; }
+  }, [ready]);
 
   useEffect(() => {
-    if (!newNoteId) return;
-    const frame = window.requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-note-id="${newNoteId}"]`)
-        ?.scrollIntoView({
-          behavior: prefersReducedMotion() ? "auto" : "smooth",
-          block: "center",
-        });
-    });
-    const timer = window.setTimeout(() => setNewNoteId(null), 360);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
-  }, [newNoteId]);
-
-  const notes = useMemo(() => sortNotes(state.notes), [state.notes]);
-  const positionedNotes = useMemo(() => {
-    const rowCounts: Record<JotLane, number> = { left: 0, right: 0 };
-    return notes.map((note) => {
-      const lane: JotLane = note.isCompleted ? "right" : "left";
-      rowCounts[lane] += 1;
-      return { note, lane, laneRow: rowCounts[lane] };
-    });
-  }, [notes]);
-
-  const createNote = useCallback(() => {
-    const id = getNoteId();
-    const now = Date.now();
-    updateState((current) => {
-      return {
-        notes: [
-          ...current.notes,
-          {
-            id,
-            text: "",
-            color: JOT_COLORS[current.nextColorIndex % JOT_COLORS.length],
-            isCompleted: false,
-            completedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-        nextColorIndex: current.nextColorIndex + 1,
-      };
-    });
-    setNewNoteId(id);
-    setActiveNoteId(id);
-    setEditingId(id);
-    announce("已新建便签");
-
-    if (!preferencesRef.current.gestureHintSeen) {
-      setShowGestureHint(true);
-      rememberPreference("gestureHintSeen");
-    }
-  }, [announce, rememberPreference, updateState]);
-
-  const updateNote = useCallback((id: string, text: string) => {
-    dismissGestureHint();
-    updateState((current) => ({
-      ...current,
-      notes: current.notes.map((note) =>
-        note.id === id ? { ...note, text, updatedAt: Date.now() } : note,
-      ),
-    }));
-  }, [dismissGestureHint, updateState]);
-
-  const toggleNote = useCallback((id: string) => {
-    const previousNote = stateRef.current.notes.find((note) => note.id === id);
-    if (!previousNote) return;
-    const now = Date.now();
-    dismissGestureHint();
-    setEditingId(null);
-    updateState((current) => ({
-      ...current,
-      notes: current.notes.map((note) =>
-        note.id === id
-          ? {
-              ...note,
-              isCompleted: !note.isCompleted,
-              completedAt: note.isCompleted ? null : now,
-              updatedAt: now,
-            }
-          : note,
-      ),
-    }));
-    announce(
-      previousNote.isCompleted
-        ? `已取消完成：${previousNote.text || "空白便签"}`
-        : `已完成：${previousNote.text || "空白便签"}`,
-    );
-  }, [announce, dismissGestureHint, updateState]);
-
-  const removeNote = useCallback((id: string, restoreFocus = false) => {
-    const currentState = stateRef.current;
-    const index = currentState.notes.findIndex((note) => note.id === id);
-    if (index < 0) return;
-
-    const note = currentState.notes[index];
-    const sortedBeforeRemoval = sortNotes(currentState.notes);
-    const sortedIndex = sortedBeforeRemoval.findIndex((item) => item.id === id);
-    const focusCandidate =
-      sortedBeforeRemoval[sortedIndex + 1] ?? sortedBeforeRemoval[sortedIndex - 1] ?? null;
-
-    dismissGestureHint();
-    setEditingId((current) => (current === id ? null : current));
-    setNewNoteId((current) => (current === id ? null : current));
-    setActiveNoteId(focusCandidate?.id ?? null);
-    updateState((current) => ({
-      ...current,
-      notes: current.notes.filter((note) => note.id !== id),
-    }));
-
-    if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
-    setRemovedNote({ note, index });
-    undoTimerRef.current = window.setTimeout(() => {
-      setRemovedNote(null);
-      undoTimerRef.current = null;
-    }, UNDO_DURATION_MS);
-    announce(`已删除：${note.text || "空白便签"}`);
-
-    if (restoreFocus) focusNote(focusCandidate?.id ?? null);
-  }, [announce, dismissGestureHint, focusNote, updateState]);
-
-  const undoRemove = useCallback(() => {
-    if (!removedNote) return;
-    const { note, index } = removedNote;
-    if (undoTimerRef.current !== null) {
-      window.clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = null;
-    }
-
-    updateState((current) => {
-      if (current.notes.some((item) => item.id === note.id)) return current;
-      const restoredNotes = [...current.notes];
-      restoredNotes.splice(Math.min(index, restoredNotes.length), 0, note);
-      return { ...current, notes: restoredNotes };
-    });
-    setRemovedNote(null);
-    setActiveNoteId(note.id);
-    announce(`已恢复：${note.text || "空白便签"}`);
-    focusNote(note.id);
-  }, [announce, focusNote, removedNote, updateState]);
-
-  const leaveJot = useCallback(() => {
-    router.push("/");
-  }, [router]);
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(false), 4600);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
-    function handleGlobalKeyboard(event: globalThis.KeyboardEvent) {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!removed) return;
+    const timer = setTimeout(() => setRemoved(null), 4200);
+    return () => clearTimeout(timer);
+  }, [removed]);
 
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable;
-      const isNativeControl = Boolean(target?.closest("a, button"));
+  useEffect(() => {
+    if (!newId) return;
+    const timer = setTimeout(() => setNewId(null), 350);
+    return () => clearTimeout(timer);
+  }, [newId]);
 
-      if (!isTyping && event.key.toLowerCase() === "n" && !event.repeat) {
-        event.preventDefault();
-        createNote();
-        return;
-      }
-
-      if (event.key === "Escape" && !isTyping) {
-        event.preventDefault();
-        if (editingId) {
-          setEditingId(null);
-          announce("已退出编辑");
-        } else {
-          leaveJot();
-        }
-        return;
-      }
-
-      if (!isTyping && !isNativeControl && activeNoteId) {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          setEditingId(activeNoteId);
-        } else if (event.key === " ") {
-          event.preventDefault();
-          toggleNote(activeNoteId);
-        } else if (event.key === "Delete" || event.key === "Backspace") {
-          event.preventDefault();
-          removeNote(activeNoteId, true);
-        }
-      }
-    }
-
-    window.addEventListener("keydown", handleGlobalKeyboard);
-    return () => window.removeEventListener("keydown", handleGlobalKeyboard);
-  }, [
-    activeNoteId,
-    announce,
-    createNote,
-    editingId,
-    leaveJot,
-    removeNote,
-    toggleNote,
-  ]);
-
-  function handleCanvasPointerDown(event: PointerEvent<HTMLElement>) {
-    if (
-      event.button !== 0 ||
-      (event.target as Element).closest("[data-jot-note], [data-jot-chrome]")
-    ) {
-      return;
-    }
-    canvasPointerRef.current = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      moved: false,
-    };
+  function focusNote(id?: string) {
+    requestAnimationFrame(() => {
+      // A newer action may already have opened an editor or the history dialog.
+      if (dialog.current?.open || scroller.current?.querySelector("input")) return;
+      const slot = id && scroller.current?.querySelector<HTMLElement>(`[data-note-id="${CSS.escape(id)}"] [data-note-focus-target]`);
+      (slot || scroller.current)?.focus();
+    });
   }
 
-  function handleCanvasPointerMove(event: PointerEvent<HTMLElement>) {
-    const pointer = canvasPointerRef.current;
-    if (!pointer || pointer.pointerId !== event.pointerId || pointer.moved) return;
-    if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 9) {
-      pointer.moved = true;
-    }
-  }
-
-  function handleCanvasPointerUp(event: PointerEvent<HTMLElement>) {
-    const pointer = canvasPointerRef.current;
-    canvasPointerRef.current = null;
-    if (!pointer || pointer.pointerId !== event.pointerId || pointer.moved) return;
-    if ((event.target as Element).closest("[data-jot-note], [data-jot-chrome]")) return;
-
-    dismissGestureHint();
-    setEditingId(null);
+  const create = useCallback(() => {
     const now = Date.now();
-    if (now - lastCanvasTapAtRef.current <= CANVAS_DOUBLE_TAP_MS) {
-      lastCanvasTapAtRef.current = 0;
-      createNote();
-    } else {
-      lastCanvasTapAtRef.current = now;
+    const id = "jot-" + (globalThis.crypto?.randomUUID?.() ?? now + "-" + Math.random().toString(36).slice(2));
+    if (!commit(current => ({
+      ...current,
+      notes: [...current.notes, { id, text: "", color: JOT_COLORS[current.nextColorIndex % JOT_COLORS.length],
+        isCompleted: false, completedAt: null, createdAt: now, updatedAt: now }],
+      nextColorIndex: current.nextColorIndex + 1,
+    }))) return;
+    setEditing(id); setNewId(id); setMessage("已新建便签");
+    if (!prefs.current.gestureHintSeen) {
+      setHint(true);
+      prefs.current = { ...prefs.current, gestureHintSeen: true };
+      try { saveJotPreferences(prefs.current); } catch { /* The note is already saved. */ }
+    }
+  }, [commit]);
+
+  useEffect(() => {
+    function keyboard(event: globalThis.KeyboardEvent) {
+      const target = event.target as HTMLElement;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || dialog.current?.open
+        || target.closest("input, textarea, [contenteditable=true]")) return;
+      if (event.key.toLowerCase() === "n" && !event.repeat) { event.preventDefault(); create(); }
+      else if (event.key === "Escape") { event.preventDefault(); router.push("/"); }
+    }
+    window.addEventListener("keydown", keyboard);
+    return () => window.removeEventListener("keydown", keyboard);
+  }, [router, create]);
+
+  const pending = useMemo(() => state.notes.filter(note => !note.isCompleted), [state.notes]);
+  const history = useMemo(() => [...state.history].reverse().sort((a, b) => b.completedAt - a.completedAt), [state.history]);
+
+  function complete(id: string) {
+    const index = pending.findIndex(note => note.id === id);
+    if (!commit(current => completeNote(current, id, Date.now()))) return;
+    setMessage("已存入完成记录"); setHint(false);
+    focusNote((pending[index + 1] ?? pending[index - 1])?.id);
+  }
+
+  function remove(id: string) {
+    let entry: RemovedNote | undefined;
+    if (!commit(current => {
+      const index = current.notes.findIndex(note => note.id === id && !note.isCompleted);
+      if (index < 0) return current;
+      entry = { note: current.notes[index], index, previous: current.notes[index - 1]?.id, next: current.notes[index + 1]?.id };
+      return { ...current, notes: current.notes.filter(note => note.id !== id) };
+    }) || !entry) return;
+    setRemoved(entry); setHint(false); setMessage("已删除便签");
+    const index = pending.findIndex(note => note.id === id);
+    focusNote((pending[index + 1] ?? pending[index - 1])?.id);
+  }
+
+  function undo() {
+    if (!removed || !commit(current => {
+      if (current.notes.some(note => note.id === removed.note.id)) return current;
+      const notes = [...current.notes];
+      const next = notes.findIndex(note => note.id === removed.next);
+      const previous = notes.findIndex(note => note.id === removed.previous);
+      notes.splice(next >= 0 ? next : previous >= 0 ? previous + 1 : Math.min(removed.index, notes.length), 0, removed.note);
+      return { ...current, notes };
+    })) return;
+    setRemoved(null); setMessage("已恢复便签"); focusNote(removed.note.id);
+  }
+
+  function canvasDown(event: PointerEvent<HTMLElement>) {
+    if (!ready || !event.isPrimary || event.button !== 0 || (event.target as Element).closest("[data-jot-note], [data-jot-chrome]")) return;
+    // The compatibility mouse press after the second tap would blur the new editor.
+    if (Date.now() - lastTap.current <= 280) event.preventDefault();
+    contact.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+
+  function canvasMove(event: PointerEvent<HTMLElement>) {
+    const point = contact.current;
+    if (point?.id === event.pointerId && Math.hypot(event.clientX - point.x, event.clientY - point.y) > 12) {
+      contact.current = null; lastTap.current = 0;
     }
   }
 
-  return (
-    <main
-      ref={mainRef}
-      className={styles.jotPage}
-      lang="zh-CN"
-      aria-label="Jot 本地便签"
-      aria-describedby="jot-keyboard-help"
-      tabIndex={-1}
-      onPointerCancel={() => {
-        canvasPointerRef.current = null;
-      }}
-      onPointerDown={handleCanvasPointerDown}
-      onPointerMove={handleCanvasPointerMove}
-      onPointerUp={handleCanvasPointerUp}
-      onScroll={() => {
-        lastCanvasTapAtRef.current = 0;
-        if (canvasPointerRef.current) canvasPointerRef.current.moved = true;
-      }}
-    >
-      <span
-        hidden
-        aria-hidden="true"
-        dangerouslySetInnerHTML={{
-          __html:
-            "<!-- THESIS: The note is the control; no toolbar, account, or editor route. OWN-WORLD: OnceEgg watercolor canvas, 23 torn pigment tapes, quiet typewriter ink, down-right shadow. STORY: Double-tap blank space to write, tap to edit, double-tap to complete, swipe left to tear away. FIRST VIEWPORT: A single tactile stack on narrow screens becomes two quiet status lanes on wide screens: unfinished left, completed right. FORM: A responsive note wall extending OnceEgg's paper constellation. -->",
-        }}
-      />
+  function canvasUp(event: PointerEvent<HTMLElement>) {
+    if (contact.current?.id !== event.pointerId) return;
+    contact.current = null;
+    const now = Date.now();
+    if (now - lastTap.current <= 280) { lastTap.current = 0; create(); }
+    else lastTap.current = now;
+  }
 
-      <p id="jot-keyboard-help" className={styles.visuallyHidden}>
-        按 N 新建便签。聚焦便签后，按回车编辑、空格切换完成、Delete 或 Backspace
-        删除。按 Escape 退出编辑或返回 OnceEgg。
-      </p>
-      <p
-        key={announcement.sequence}
-        className={styles.visuallyHidden}
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {announcement.message}
-      </p>
+  function openHistory() {
+    lastTap.current = 0; setHint(false);
+    dialog.current?.showModal();
+  }
 
-      <Link
-        href="/"
-        className={styles.homeMark}
-        data-jot-chrome
-        aria-label="返回 OnceEgg 首页"
-        aria-keyshortcuts="Escape"
-        onPointerDown={(event) => event.stopPropagation()}
-        onPointerUp={(event) => event.stopPropagation()}
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 30">
-          <path d="M12 1.7C8.2 1.7 3.6 8.8 3.6 16c0 7.1 3.6 11.9 8.4 11.9s8.4-4.8 8.4-11.9C20.4 8.8 15.8 1.7 12 1.7Z" />
-          <path d="m10.1 9.7 2.2 2.4-1.5 2.2 2.8 2.1" />
-        </svg>
+  return <main ref={scroller} className={styles.jotPage} lang="zh-CN" aria-label="Jot 本地便签" aria-describedby="jot-help" tabIndex={-1}
+    onPointerDown={canvasDown} onPointerMove={canvasMove} onPointerUp={canvasUp}
+    onPointerCancel={() => { contact.current = null; lastTap.current = 0; }}
+    onScroll={() => { contact.current = null; lastTap.current = 0; }}>
+    <p id="jot-help" className={styles.visuallyHidden}>按 N 新建便签。聚焦便签后按回车编辑、空格完成、Delete 删除，按 Alt 和上下方向键排序。</p>
+    <p className={styles.visuallyHidden} role="status">{message}</p>
+    <header className={styles.header} data-jot-chrome>
+      <Link href="/" className={styles.iconButton} aria-label="返回 OnceEgg 首页" title="返回 OnceEgg">
+        <svg aria-hidden="true" viewBox="0 0 24 30"><path d="M12 1.7C8.2 1.7 3.6 8.8 3.6 16c0 7.1 3.6 11.9 8.4 11.9s8.4-4.8 8.4-11.9C20.4 8.8 15.8 1.7 12 1.7Z" /><path d="m10.1 9.7 2.2 2.4-1.5 2.2 2.8 2.1" /></svg>
       </Link>
-
-      {showDeviceNotice ? (
-        <p className={styles.deviceNotice} data-jot-chrome>
-          只留在这台设备里。
-        </p>
-      ) : null}
-
-      <div className={styles.notes}>
-        {positionedNotes.map(({ note, lane, laneRow }) => (
-          <TapeNote
-            key={note.id}
-            note={note}
-            lane={lane}
-            viewportWidth={viewportWidth}
-            laneRow={laneRow}
-            isEditing={editingId === note.id}
-            isNew={newNoteId === note.id}
-            onEdit={() => {
-              dismissGestureHint();
-              setActiveNoteId(note.id);
-              setEditingId(note.id);
-            }}
-            onChange={(text) => updateNote(note.id, text)}
-            onFinishEditing={() =>
-              setEditingId((current) => (current === note.id ? null : current))
+      <h1>OnceJot</h1>
+      <button type="button" className={styles.iconButton} aria-label="完成记录" title="完成记录" aria-haspopup="dialog" onClick={openHistory}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 1.7 7.5M3 4v6h6M12 7v5l3 2" /></svg>
+      </button>
+    </header>
+    <div className={styles.notes}>
+      {pending.map(note => <TapeNote key={note.id} note={note} editing={editing === note.id} fresh={newId === note.id}
+        onEdit={() => { if (ready) { setEditing(note.id); setHint(false); } }}
+        onFinish={returnFocus => {
+          setEditing(null);
+          if (returnFocus) focusNote(note.id);
+        }}
+        onChange={text => commit(current => ({ ...current, notes: current.notes.map(item => item.id === note.id && !item.isCompleted
+          ? { ...item, text, updatedAt: Date.now() } : item) }))}
+        onComplete={() => complete(note.id)} onRemove={() => remove(note.id)}
+        onReorder={(target, ids) => {
+          if (commit(current => {
+            if (ids) {
+              const latest = current.notes.filter(item => !item.isCompleted);
+              if (latest.length !== ids.length || latest.some((item, index) => item.id !== ids[index])) return current;
             }
-            onToggle={() => toggleNote(note.id)}
-            onRemove={() => removeNote(note.id)}
-            onKeyboardRemove={() => removeNote(note.id, true)}
-            onInteractionStart={() => {
-              dismissGestureHint();
-              lastCanvasTapAtRef.current = 0;
-            }}
-            onFocus={() => setActiveNoteId(note.id)}
-            onExit={leaveJot}
-          />
-        ))}
-
-        {notes.length === 0 ? (
-          <div className={styles.emptyState} aria-live="polite">
-            <span>{isReady ? "双击空白处" : "正在铺纸…"}</span>
-          </div>
-        ) : null}
-
-        {notes.length > 0 ? <div className={styles.footerSpace} aria-hidden="true" /> : null}
-      </div>
-
-      {showGestureHint ? (
-        <p className={styles.gestureHint} data-jot-chrome>
-          tap to edit · double tap to finish · swipe left to remove
-        </p>
-      ) : null}
-
-      {removedNote ? (
-        <div
-          className={styles.undoNotice}
-          data-jot-chrome
-          onPointerDown={(event) => event.stopPropagation()}
-          onPointerUp={(event) => event.stopPropagation()}
-        >
-          <span>removed — </span>
-          <button type="button" onClick={undoRemove} aria-label="恢复刚刚删除的便签">
-            undo
-          </button>
-        </div>
-      ) : null}
-
-      {storageError ? (
-        <p className={styles.storageError} role="status">
-          本地便签没有成功保存：{storageError}
-        </p>
-      ) : null}
-    </main>
-  );
+            return reorderPending(current, note.id, target);
+          })) setMessage("已调整便签顺序");
+        }}
+        onInteract={() => { lastTap.current = 0; setHint(false); }} />)}
+      {!pending.length && <div className={styles.emptyState}>{ready ? "双击空白处，写下便签" : error ? "" : "正在铺纸…"}</div>}
+    </div>
+    {removed ? <div className={styles.toast} data-jot-chrome>已删除便签 <button onClick={undo}>撤销</button></div>
+      : hint ? <p className={styles.hint}><span className={styles.mouseHint}>拖动排序</span><span className={styles.touchHint}>长按拖动排序</span> · 双击完成 · 左滑删除</p>
+      : notice ? <p className={styles.hint}>只留在这台设备里。</p> : null}
+    {error && <div className={styles.error} role="alert" data-jot-chrome>{error} {!ready && <button onClick={load}>重试</button>}</div>}
+    <dialog ref={dialog} className={styles.history} aria-labelledby="jot-history-title" data-jot-chrome
+      onClick={event => { if (event.target === event.currentTarget) {
+        const box = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.current?.close();
+      } }}>
+      <header className={styles.historyHeader}><h2 id="jot-history-title">完成记录</h2>
+        <button className={styles.iconButton} onClick={() => dialog.current?.close()} aria-label="关闭完成记录"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </header>
+      {error && <p role="alert" className={styles.historyError}>{error} {!ready && <button onClick={load}>重试</button>}</p>}
+      {history.length ? <ol className={styles.records}>{history.map(record => <li key={record.noteId}>
+        <span className={styles.swatch} aria-hidden="true" style={{ backgroundColor: JOT_PALETTE[record.color].surface }} />
+        <div><p>{record.text || "空白便签"}</p><time>{dateFormat.format(record.completedAt)}</time></div>
+        <button aria-label={`恢复待办：${record.text || "空白便签"}`} onClick={() => {
+          if (commit(current => reopenNote(current, record.noteId))) {
+            dialog.current?.close(); setMessage("已恢复待办"); focusNote(record.noteId);
+          }
+        }}>恢复待办</button>
+      </li>)}</ol> : <p className={styles.historyEmpty}>{ready ? "还没有完成记录" : error ? "暂时无法读取记录" : "正在读取…"}</p>}
+    </dialog>
+  </main>;
 }
